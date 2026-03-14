@@ -1,45 +1,64 @@
 # AI Language Pro
 
-## The Future of Software Delivery: **Instructions → Semantic Graph → AST → Code → Compiler → Machine**
+## 🌌 Новая эпоха программирования: когда мысль становится кодом
 
-**AI Language Pro** — коммерческий прототип нового поколения, который превращает естественные инструкции в исполняемые программные артефакты.
+Представьте, что вы больше не «пишете код» в привычном смысле.
+Вы формулируете **намерение** простыми словами — а система превращает его в исполняемую программу.
 
-Это не просто "еще один AI-скрипт". Это **архитектура proto-agent систем**, где:
+**AI Language Pro** — это LLM-meta язык программирования и компиляции.
+Он строит мост между человеческой идеей и машинным выполнением:
 
-1. бизнес-интент задаётся как инструкции,
-2. система строит семантическое представление,
-3. формирует AST,
-4. генерирует код в целевой язык,
-5. компилирует/валидирует,
-6. запускает на машине.
+`instructions → semantic graph → AST → Python/C/Rust/Solidity/Kotlin code → compiler → machine`
 
-Если вы хотите продукт, который можно продавать enterprise-клиентам как AI automation platform, именно такая архитектура — будущее.
+Это не «замена Python». Это уровень **выше** обычных языков — слой архитектурного управления программами.
 
 ---
 
-## Почему это продаёт вашу разработку
+## 🚀 Почему это принципиально круче обычных языков
 
-- **Понятный value for business:** от требований к рабочему коду и executable artifact.
-- **Инженерная прозрачность:** semantic graph + AST позволяют объяснять решения и проводить аудит.
-- **Мульти-языковой выход:** Python / C / Rust / Solidity / Kotlin.
-- **Основа для proto-agent систем:** можно добавлять planner, memory, tool-execution без смены ядра.
+Обычные языки отвечают на вопрос: **«как именно реализовать?»**  
+AI Language Pro сначала отвечает на вопрос: **«что именно должно быть сделано и зачем?»**
+
+### Что это даёт бизнесу и разработке
+
+- **Скорость x10 на старте идей** — от инструкции к рабочему артефакту за минуты.
+- **Прозрачность решений** — semantic graph и AST показывают, как мысль превращается в программу.
+- **Мульти-платформенность с одного источника** — один intent, несколько языков вывода.
+- **Архитектурная масштабируемость** — идеальная основа для proto-agent систем нового поколения.
+- **Переход от «файлов кода» к «компилируемому смыслу»** — это и есть будущее программирования.
 
 ---
 
-## Что уже готово (рабочий Python-прототип)
+## 🧠 Что такое LLM-meta язык простыми словами
+
+LLM-meta язык — это язык, который программирует **не строки**, а **смысл**:
+
+1. Вы задаёте инструкцию простым человеческим языком.
+2. Система строит карту смысла (semantic graph).
+3. Преобразует её в структурное представление (AST).
+4. Генерирует код под выбранную технологию.
+5. Проверяет/компилирует.
+6. Запускает на машине.
+
+В обычном мире вы думаете как компилятор.
+В AI Language Pro компилятор начинает думать как вы.
+
+---
+
+## ✅ Что уже реализовано (рабочий прототип на Python)
 
 - Парсер `.ailang` инструкций.
 - Построение semantic graph.
 - Построение AST.
-- Генерация кода в 5 целевых языков.
-- Валидация Python через bytecode compilation.
-- Запуск Python-артефакта на машине (`run` команда).
-- LLM runtime режим (`ask`) с пользовательским API-ключом.
+- Генерация кода в 5 языков: Python, C, Rust, Solidity, Kotlin.
+- Валидация Python-кода через bytecode compile.
+- Машинный запуск Python-артефакта (`run`).
+- LLM runtime (`ask`) с ключом пользователя.
 - Тесты + линтинг + CI.
 
 ---
 
-## Формат AI Language
+## ✍️ Формат AI Language
 
 ```text
 ACTION TARGET | constraint1; constraint2
@@ -55,36 +74,36 @@ emit docs | concise
 
 ---
 
-## CLI
+## 🛠 CLI
 
-### 1) Generate
+### 1) Генерация кода
 
 ```bash
 ai-language generate examples/service.ailang --target python --out build/service.py --emit-graph build/graph.json
 ```
 
-### 2) Check (compiler validation)
+### 2) Проверка (compiler validation)
 
 ```bash
 ai-language check build/service.py
 ```
 
-### 3) Run (machine execution)
+### 3) Запуск на машине (machine execution)
 
 ```bash
 ai-language run build/service.py
 ```
 
-### 4) Ask (LLM runtime)
+### 4) LLM runtime
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-ai-language ask "Сгенерируй архитектуру сервиса антифрода" --model gpt-4o-mini --temperature 0.2
+ai-language ask "Спроектируй anti-fraud сервис для финтеха" --model gpt-4o-mini --temperature 0.2
 ```
 
 ---
 
-## Python SDK
+## 🐍 Python SDK
 
 ```python
 from ai_language import compile_source
@@ -101,13 +120,7 @@ print(len(artifact.semantic_graph.nodes), len(artifact.semantic_graph.edges))
 
 ---
 
-## Установка
-
-```bash
-pip install ai-language-pro
-```
-
-Для разработки:
+## ⚙️ Локальный запуск
 
 ```bash
 python -m venv .venv
@@ -117,7 +130,7 @@ pip install -e .[dev]
 
 ---
 
-## Тесты
+## 🧪 Тесты
 
 ```bash
 python -m ruff check .
@@ -126,29 +139,16 @@ PYTHONPATH=src pytest -q
 
 ---
 
-## Коммерческая лицензия
+## 💼 Коммерческая лицензия
 
-Проект распространяется по коммерческой лицензии. Любое коммерческое использование, модификация,
-встраивание в клиентские решения и перепродажа требуют отдельного письменного соглашения.
+Проект распространяется по коммерческой лицензии.
+Коммерческое внедрение, кастомизация и интеграция в клиентские системы — по отдельному соглашению.
 
-См. файл [LICENSE](LICENSE).
-
----
-
-## Публикация в PyPI
-
-```bash
-python -m build
-python -m twine check dist/*
-TWINE_USERNAME=__token__ TWINE_PASSWORD=<your-pypi-token> python -m twine upload dist/*
-```
-
-После публикации пакет доступен по адресу:
-`https://pypi.org/project/ai-language-pro/`
+Подробности: [LICENSE](LICENSE)
 
 ---
 
-## Донаты
+## 💎 Донаты
 
 - **ETH:** `0x980Ddb04c54979b3Ed23df4a7DBc7049b7d0D686`
 - **BTC:** `bc1q49rfm0p6qh6nlnm4az4yhhk9x82zfxwgtcnhvm`
