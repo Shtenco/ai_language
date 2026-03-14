@@ -1,84 +1,33 @@
-# AI Language Pro — ИИ язык программирования (Python SDK + CLI)
+# AI Language Pro
 
-[![CI](https://img.shields.io/badge/CI-pytest%20%7C%20ruff-blue)](#development)
-[![Python](https://img.shields.io/badge/python-3.9%2B-success)](#requirements)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+AI Language Pro — это **рабочий прототип ИИ языка программирования** в Python.
 
-**AI Language Pro** — это проект, который подаёт себя как **ИИ язык программирования нового поколения**:
-вы пишете естественные инструкции как код, а рантайм-компоненты (`CLI`/`SDK`) превращают их в управляемые вызовы LLM.
+Pipeline языка:
 
-> Идея: естественный язык как high-level DSL для программирования ИИ-поведения.
+`instructions ↓ semantic graph ↓ AST ↓ Python / C / Rust / Solidity / Kotlin code → compiler`
 
----
+Проект даёт реальный CLI и SDK, которые принимают `.ailang` инструкции и компилируют их в код целевого языка.
 
-## Что такое «ИИ язык программирования» в этом проекте
+## Возможности
 
-В контексте `ai-language-pro` язык состоит из трёх уровней:
-
-1. **Syntax Layer (Prompt-as-Code)**
-   - Текстовые инструкции выступают как исходный код.
-2. **Runtime Layer (CLI/SDK)**
-   - `ai-language` CLI и Python-клиент исполняют этот «код» через API модели.
-3. **Execution Layer (LLM Model)**
-   - Модель (`gpt-4o-mini` по умолчанию) генерирует результат.
-
-Такой подход позволяет использовать проект как основу для:
-- AI-скриптинга,
-- автоматизации текстовых пайплайнов,
-- создания proto-agent систем.
-
----
-
-## Пакет в PyPI
-
-- **Имя пакета:** `ai-language-pro`
-- **Страница пакета (PyPI):** `https://pypi.org/project/ai-language-pro/`
-
-> Если страница ещё не отображается сразу, подождите несколько минут: индекс PyPI обновляется не мгновенно.
-
----
-
-## Архитектура
-
-```text
-.
-├── pyproject.toml
-├── src/
-│   └── ai_language/
-│       ├── __init__.py
-│       ├── cli.py
-│       ├── client.py
-│       └── config.py
-├── tests/
-│   ├── test_cli.py
-│   └── test_config.py
-└── .github/workflows/ci.yml
-```
-
-### Основные компоненты
-
-- `config.py` — безопасное получение ключа пользователя (`--api-key` или `OPENAI_API_KEY`).
-- `client.py` — Python runtime-клиент (`AILanguageClient`) для генерации текста.
-- `cli.py` — исполняемый вход в «язык» через команду `ai-language`.
-
----
-
-## Requirements
-
-- Python 3.9+
-- OpenAI API key (пользователь указывает самостоятельно)
-
----
+- Компиляция инструкций в:
+  - Python
+  - C
+  - Rust
+  - Solidity
+  - Kotlin
+- Построение **semantic graph**.
+- Построение **AST**.
+- Проверка Python-артефакта через bytecode compilation.
+- Отдельный runtime режим `ask` для LLM-запросов с ключом пользователя.
 
 ## Установка
-
-### Из PyPI
 
 ```bash
 pip install ai-language-pro
 ```
 
-### Для разработки
+или для разработки:
 
 ```bash
 python -m venv .venv
@@ -86,54 +35,66 @@ source .venv/bin/activate
 pip install -e .[dev]
 ```
 
----
+## Формат инструкций (`.ailang`)
 
-## Быстрый старт (как писать на AI Language)
+Построчный формат:
 
-### 1) Через переменную окружения
+```text
+ACTION TARGET | constraint1; constraint2
+```
+
+Пример:
+
+```text
+generate rest_api | auth; pagination
+validate schema
+emit docs | concise
+```
+
+## CLI
+
+### 1) Сгенерировать код
+
+```bash
+ai-language generate examples/service.ailang --target python --out build/service.py --emit-graph build/graph.json
+```
+
+### 2) Проверить сгенерированный Python
+
+```bash
+ai-language check build/service.py
+```
+
+### 3) Использовать LLM runtime
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-ai-language "Сгенерируй архитектуру микросервиса для платежей"
+ai-language ask "Сгенерируй план миграции монолита в микросервисы" --model gpt-4o-mini --temperature 0.2
 ```
-
-### 2) Через аргумент
-
-```bash
-ai-language "Сделай техспеку API" --api-key "sk-..."
-```
-
-### 3) Управление моделью/температурой
-
-```bash
-ai-language "Explain monads simply" --model gpt-4o-mini --temperature 0.3
-```
-
----
 
 ## Python SDK
 
 ```python
-from ai_language.client import AILanguageClient
+from ai_language import compile_source
 
-client = AILanguageClient(api_key="sk-...", model="gpt-4o-mini")
-result = client.generate("Сгенерируй шаблон RFC для команды backend")
-print(result)
+source = """
+generate payment_service | retries; idempotency
+validate contracts
+"""
+
+result = compile_source(source, target="rust")
+print(result.code)
+print(len(result.semantic_graph.nodes), len(result.semantic_graph.edges))
 ```
 
----
-
-## Development
+## Запуск тестов
 
 ```bash
-ruff check .
+python -m ruff check .
 PYTHONPATH=src pytest -q
-python -m build
 ```
 
----
-
-## Публикация новой версии в PyPI
+## Публикация в PyPI
 
 ```bash
 python -m build
@@ -141,24 +102,28 @@ python -m twine check dist/*
 python -m twine upload dist/*
 ```
 
-Перед публикацией обновите `version` в `pyproject.toml`.
+Если используете токен:
 
----
+```bash
+TWINE_USERNAME=__token__
+TWINE_PASSWORD=<your-pypi-token>
+python -m twine upload dist/*
+```
+
+## Страница пакета (PyPI)
+
+- После успешной публикации пакет будет доступен по адресу:
+  `https://pypi.org/project/ai-language-pro/`
 
 ## Безопасность
 
-- Не храните реальные API ключи в Git.
-- Не коммитьте `.env`.
-- Для продакшена используйте secrets manager.
-
----
+- Ключ OpenAI хранит и передаёт только пользователь.
+- Не коммитьте `.env` и токены.
 
 ## Донаты
 
-- **ETH:** `0x980Ddb04c54979b3Ed23df4a7DBc7049b7d0D686`
-- **BTC:** `bc1q49rfm0p6qh6nlnm4az4yhhk9x82zfxwgtcnhvm`
-
----
+- **ETH**: `0x980Ddb04c54979b3Ed23df4a7DBc7049b7d0D686`
+- **BTC**: `bc1q49rfm0p6qh6nlnm4az4yhhk9x82zfxwgtcnhvm`
 
 ## License
 

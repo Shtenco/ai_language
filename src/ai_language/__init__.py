@@ -1,5 +1,7 @@
 """ai_language package."""
 
-__all__ = ["__version__"]
+from .pipeline import PipelineResult, compile_source
 
-__version__ = "0.1.0"
+__all__ = ["PipelineResult", "compile_source", "__version__"]
+
+__version__ = "0.2.0"

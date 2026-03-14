@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-language-pro"
-version = "0.1.0"
-description = "Professional AI language toolkit with CLI, user-managed API keys, and secure defaults."
+version = "0.2.0"
+description = "AI programming language prototype: instructions -> semantic graph -> AST -> multi-target codegen."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
