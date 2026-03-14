@@ -1,21 +1,37 @@
-MIT License
+AI Language Pro Commercial License v1.0
 
-Copyright (c) 2026 AI Language Contributors
+Copyright (c) 2026 AI Language Contributors.
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. GRANT OF RIGHTS
+Subject to a valid commercial agreement with the Licensor, the Licensee is granted
+non-exclusive, non-transferable, revocable rights to use this software solely under
+the terms of that agreement.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+2. RESTRICTIONS
+Without explicit written permission from the Licensor, you may NOT:
+- copy, publish, distribute, sublicense, lease, or sell the software;
+- create derivative works for redistribution;
+- embed the software into paid or client-facing products;
+- remove copyright, trademark, or proprietary notices.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. OWNERSHIP
+The software, including all intellectual property rights, remains the exclusive
+property of the Licensor.
+
+4. COMMERCIAL USE
+Any commercial use requires a separate signed commercial license agreement.
+Contact the Licensor for pricing and terms.
+
+5. NO WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT ANY WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NON-INFRINGEMENT.
+
+6. LIMITATION OF LIABILITY
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY ARISING FROM OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+7. TERMINATION
+Any breach of this license automatically terminates all rights granted herein.
+Upon termination, you must cease all use and destroy all copies of the software.

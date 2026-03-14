@@ -33,3 +33,13 @@ def test_cli_generate_writes_output(tmp_path: Path, capsys) -> None:
     assert rc == 0
     assert out.exists()
     assert "Generated python code" in capsys.readouterr().out
+
+
+def test_cli_run_executes_generated_python(tmp_path: Path, capsys) -> None:
+    generated = tmp_path / "generated.py"
+    generated.write_text("print('from-machine')\n", encoding="utf-8")
+
+    rc = cli.main(["run", str(generated)])
+
+    assert rc == 0
+    assert "from-machine" in capsys.readouterr().out

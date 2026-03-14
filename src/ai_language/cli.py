@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from .client import AILanguageClient
-from .compiler import compile_python_file
+from .compiler import ExecutionError, compile_python_file, execute_python_file
 from .config import DEFAULT_MODEL, MissingAPIKeyError
 from .pipeline import SUPPORTED_TARGETS, compile_source
 
@@ -16,7 +16,9 @@ from .pipeline import SUPPORTED_TARGETS, compile_source
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ai-language",
-        description="AI programming language toolkit: compile instructions into code.",
+        description=(
+            "AI programming language toolkit: compile instructions into executable artifacts."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -29,13 +31,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target language.",
     )
     gen.add_argument("--out", required=True, help="Output file path for generated code.")
-    gen.add_argument(
-        "--emit-graph",
-        help="Optional JSON output path for semantic graph artifact.",
-    )
+    gen.add_argument("--emit-graph", help="Optional JSON output path for semantic graph artifact.")
 
     check = subparsers.add_parser("check", help="Compile/validate generated Python file.")
     check.add_argument("file", help="Path to generated Python file.")
+
+    run = subparsers.add_parser("run", help="Compile and run generated Python on machine.")
+    run.add_argument("file", help="Path to generated Python file.")
 
     ask = subparsers.add_parser("ask", help="Send natural-language prompt to model runtime.")
     ask.add_argument("prompt", help="Prompt text to send to the model.")
@@ -74,6 +76,13 @@ def _run_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_machine(args: argparse.Namespace) -> int:
+    compile_python_file(args.file)
+    output = execute_python_file(args.file)
+    print(output)
+    return 0
+
+
 def _run_ask(args: argparse.Namespace) -> int:
     client = AILanguageClient(api_key=args.api_key, model=args.model)
     output = client.generate(args.prompt, temperature=args.temperature)
@@ -89,12 +98,14 @@ def main(argv: list[str] | None = None) -> int:
             return _run_generate(args)
         if args.command == "check":
             return _run_check(args)
+        if args.command == "run":
+            return _run_machine(args)
         if args.command == "ask":
             return _run_ask(args)
         print(f"Unknown command: {args.command}", file=sys.stderr)
         return 2
-    except MissingAPIKeyError as exc:
-        print(f"Configuration error: {exc}", file=sys.stderr)
+    except (MissingAPIKeyError, ExecutionError) as exc:
+        print(f"Runtime configuration error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # pragma: no cover
         print(f"Runtime error: {exc}", file=sys.stderr)
