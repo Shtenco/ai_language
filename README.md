@@ -1,22 +1,44 @@
-# AI Language Pro
+# AI Language Pro — ИИ язык программирования (Python SDK + CLI)
 
 [![CI](https://img.shields.io/badge/CI-pytest%20%7C%20ruff-blue)](#development)
 [![Python](https://img.shields.io/badge/python-3.9%2B-success)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Профессиональный Python/PyPI-ready проект для генерации текста через LLM с удобным CLI, аккуратной архитектурой и безопасной моделью работы с ключом (ключ всегда указывает пользователь).
+**AI Language Pro** — это проект, который подаёт себя как **ИИ язык программирования нового поколения**:
+вы пишете естественные инструкции как код, а рантайм-компоненты (`CLI`/`SDK`) превращают их в управляемые вызовы LLM.
 
-## ✨ Что внутри
+> Идея: естественный язык как high-level DSL для программирования ИИ-поведения.
 
-- Современная структура `src/` + `pyproject.toml` (готово для публикации в PyPI).
-- CLI-команда `ai-language`.
-- Явное управление API ключом:
-  - через аргумент `--api-key`, **или**
-  - через переменную окружения `OPENAI_API_KEY` (включая `.env`).
-- Базовые автотесты (`pytest`) и линтинг (`ruff`).
-- GitHub Actions workflow для CI.
+---
 
-## 🧱 Структура проекта
+## Что такое «ИИ язык программирования» в этом проекте
+
+В контексте `ai-language-pro` язык состоит из трёх уровней:
+
+1. **Syntax Layer (Prompt-as-Code)**
+   - Текстовые инструкции выступают как исходный код.
+2. **Runtime Layer (CLI/SDK)**
+   - `ai-language` CLI и Python-клиент исполняют этот «код» через API модели.
+3. **Execution Layer (LLM Model)**
+   - Модель (`gpt-4o-mini` по умолчанию) генерирует результат.
+
+Такой подход позволяет использовать проект как основу для:
+- AI-скриптинга,
+- автоматизации текстовых пайплайнов,
+- создания proto-agent систем.
+
+---
+
+## Пакет в PyPI
+
+- **Имя пакета:** `ai-language-pro`
+- **Страница пакета (PyPI):** `https://pypi.org/project/ai-language-pro/`
+
+> Если страница ещё не отображается сразу, подождите несколько минут: индекс PyPI обновляется не мгновенно.
+
+---
+
+## Архитектура
 
 ```text
 .
@@ -33,12 +55,30 @@
 └── .github/workflows/ci.yml
 ```
 
-## ✅ Requirements
+### Основные компоненты
+
+- `config.py` — безопасное получение ключа пользователя (`--api-key` или `OPENAI_API_KEY`).
+- `client.py` — Python runtime-клиент (`AILanguageClient`) для генерации текста.
+- `cli.py` — исполняемый вход в «язык» через команду `ai-language`.
+
+---
+
+## Requirements
 
 - Python 3.9+
-- OpenAI API key (пользователь задаёт самостоятельно)
+- OpenAI API key (пользователь указывает самостоятельно)
 
-## 🚀 Быстрый старт
+---
+
+## Установка
+
+### Из PyPI
+
+```bash
+pip install ai-language-pro
+```
+
+### Для разработки
 
 ```bash
 python -m venv .venv
@@ -46,34 +86,54 @@ source .venv/bin/activate
 pip install -e .[dev]
 ```
 
-### Вариант 1: ключ через переменную окружения
+---
+
+## Быстрый старт (как писать на AI Language)
+
+### 1) Через переменную окружения
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-ai-language "Напиши краткий план запуска AI-продукта"
+ai-language "Сгенерируй архитектуру микросервиса для платежей"
 ```
 
-### Вариант 2: ключ напрямую в аргументе
+### 2) Через аргумент
 
 ```bash
-ai-language "Сделай короткий питч" --api-key "sk-..."
+ai-language "Сделай техспеку API" --api-key "sk-..."
 ```
 
-### Выбор модели
+### 3) Управление моделью/температурой
 
 ```bash
-ai-language "Summarize this text" --model gpt-4o-mini --temperature 0.3
+ai-language "Explain monads simply" --model gpt-4o-mini --temperature 0.3
 ```
 
-## 🧪 Development
+---
+
+## Python SDK
+
+```python
+from ai_language.client import AILanguageClient
+
+client = AILanguageClient(api_key="sk-...", model="gpt-4o-mini")
+result = client.generate("Сгенерируй шаблон RFC для команды backend")
+print(result)
+```
+
+---
+
+## Development
 
 ```bash
 ruff check .
-pytest
+PYTHONPATH=src pytest -q
 python -m build
 ```
 
-## 📦 Публикация в PyPI
+---
+
+## Публикация новой версии в PyPI
 
 ```bash
 python -m build
@@ -81,18 +141,25 @@ python -m twine check dist/*
 python -m twine upload dist/*
 ```
 
-> Перед публикацией обновите `name`, `version`, `authors`, `urls` в `pyproject.toml`.
+Перед публикацией обновите `version` в `pyproject.toml`.
 
-## 🔐 Безопасность API ключа
+---
 
-- Не коммитьте `.env` и реальные ключи.
-- Для продакшена храните ключи в секретах CI/CD, Vault или cloud secret manager.
+## Безопасность
 
-## 💖 Поддержать проект
+- Не храните реальные API ключи в Git.
+- Не коммитьте `.env`.
+- Для продакшена используйте secrets manager.
 
-- **ETH**: `0x980Ddb04c54979b3Ed23df4a7DBc7049b7d0D686`
-- **BTC**: `bc1q49rfm0p6qh6nlnm4az4yhhk9x82zfxwgtcnhvm`
+---
 
-## 📄 License
+## Донаты
+
+- **ETH:** `0x980Ddb04c54979b3Ed23df4a7DBc7049b7d0D686`
+- **BTC:** `bc1q49rfm0p6qh6nlnm4az4yhhk9x82zfxwgtcnhvm`
+
+---
+
+## License
 
 MIT
