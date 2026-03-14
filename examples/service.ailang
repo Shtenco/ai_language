@@ -1,0 +1,3 @@
+generate rest_api | auth; pagination
+validate schema
+emit docs | concise
