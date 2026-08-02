@@ -1,0 +1,97 @@
+name: Relay Prebuilt llama.cpp and Test Qwen
+
+on:
+  push:
+    branches:
+      - qwen05b-artifact-relay
+    paths:
+      - '.github/workflows/relay-prebuilt-llama-qwen.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/relay-prebuilt-llama-qwen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  relay-prebuilt-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LLAMA_REPO: ggml-org/llama.cpp
+      LLAMA_TAG: b10221
+      LLAMA_ASSET: llama-b10221-bin-ubuntu-x64.tar.gz
+      MODEL_REPO: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+      MODEL_FILE: qwen2.5-0.5b-instruct-q4_k_m.gguf
+      MODEL_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download official llama.cpp release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p download runtime evidence model
+          gh api "repos/$LLAMA_REPO/releases/tags/$LLAMA_TAG" > evidence/llama_release.json
+          RELEASE_DIGEST="$(jq -r --arg name "$LLAMA_ASSET" '.assets[] | select(.name==$name) | .digest' evidence/llama_release.json)"
+          test -n "$RELEASE_DIGEST"
+          test "$RELEASE_DIGEST" != "null"
+          gh release download "$LLAMA_TAG" -R "$LLAMA_REPO" -p "$LLAMA_ASSET" -D download
+          ACTUAL="sha256:$(sha256sum "download/$LLAMA_ASSET" | cut -d' ' -f1)"
+          printf '%s\n' "$RELEASE_DIGEST" > evidence/llama_expected_digest.txt
+          printf '%s\n' "$ACTUAL" > evidence/llama_actual_digest.txt
+          test "$ACTUAL" = "$RELEASE_DIGEST"
+          tar -xzf "download/$LLAMA_ASSET" -C runtime
+          LLAMA_CLI="$(find runtime -type f -name llama-cli | head -n 1)"
+          test -n "$LLAMA_CLI"
+          chmod +x "$LLAMA_CLI"
+          echo "LLAMA_CLI=$LLAMA_CLI" >> "$GITHUB_ENV"
+          "$LLAMA_CLI" --version | tee evidence/llama_cli_version.txt
+
+      - name: Download and verify official Qwen
+        run: |
+          python -m pip install --upgrade 'huggingface_hub[hf_xet]>=0.34,<2'
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(repo_id=os.environ['MODEL_REPO'], filename=os.environ['MODEL_FILE'], local_dir='model'))
+          PY
+          ACTUAL="$(sha256sum "model/$MODEL_FILE" | cut -d' ' -f1)"
+          test "$ACTUAL" = "$MODEL_SHA256"
+          echo "$ACTUAL  $MODEL_FILE" > evidence/model.sha256
+
+      - name: Single-turn Russian smoke test
+        run: |
+          PROMPT=$'<|im_start|>system\nТы полезный русскоязычный ассистент. Отвечай одним коротким предложением.<|im_end|>\n<|im_start|>user\nПочему вода замерзает при охлаждении?<|im_end|>\n<|im_start|>assistant\n'
+          timeout 180s "$LLAMA_CLI" \
+            -m "model/$MODEL_FILE" -p "$PROMPT" \
+            -n 80 -c 1024 -t 2 --temp 0.1 \
+            --single-turn --no-display-prompt --no-warmup \
+            > evidence/russian_smoke_stdout.txt 2> evidence/russian_smoke_stderr.txt
+          test -s evidence/russian_smoke_stdout.txt
+          cat evidence/russian_smoke_stdout.txt
+          grep -Eiq 'молекул|кристалл|температур|л[её]д' evidence/russian_smoke_stdout.txt
+
+      - name: Create artifact manifest
+        if: always()
+        run: |
+          find runtime evidence -type f -print0 | sort -z | xargs -0 sha256sum > evidence/runtime_manifest.sha256
+
+      - name: Upload verified runtime and smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-b10221-ubuntu-x64-qwen-smoke-tested
+          path: |
+            runtime
+            evidence
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6

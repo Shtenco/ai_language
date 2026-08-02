@@ -1,0 +1,81 @@
+name: Verified Qwen 0.5B Artifact Relay
+
+on:
+  push:
+    branches:
+      - qwen05b-artifact-relay
+    paths:
+      - '.github/workflows/qwen05b-artifact-relay.yml'
+      - 'QWEN05B_RELAY.md'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/qwen05b-artifact-relay.yml'
+      - 'QWEN05B_RELAY.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  download-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      MODEL_REPO: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+      MODEL_FILE: qwen2.5-0.5b-instruct-q4_k_m.gguf
+      EXPECTED_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install official Hugging Face downloader
+        run: python -m pip install --upgrade 'huggingface_hub[hf_xet]>=0.34,<2'
+
+      - name: Download official GGUF
+        run: |
+          mkdir -p model evidence
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          downloaded = Path(hf_hub_download(
+              repo_id=os.environ['MODEL_REPO'],
+              filename=os.environ['MODEL_FILE'],
+              local_dir='model',
+          ))
+          print(downloaded)
+          assert downloaded.is_file()
+          PY
+
+      - name: Verify exact official SHA-256
+        run: |
+          ACTUAL_SHA256="$(sha256sum "model/$MODEL_FILE" | cut -d' ' -f1)"
+          BYTES="$(stat -c %s "model/$MODEL_FILE")"
+          printf '%s  %s\n' "$ACTUAL_SHA256" "$MODEL_FILE" | tee evidence/QWEN05B_SHA256.txt
+          printf '{"repo":"%s","file":"%s","bytes":%s,"sha256":"%s","expected_sha256":"%s"}\n' \
+            "$MODEL_REPO" "$MODEL_FILE" "$BYTES" "$ACTUAL_SHA256" "$EXPECTED_SHA256" \
+            | tee evidence/QWEN05B_MANIFEST.json
+          test "$BYTES" -gt 400000000
+          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+
+      - name: Upload verified GGUF
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen2.5-0.5b-instruct-q4-k-m-verified
+          path: model/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - name: Upload checksum evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen05b-checksum-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30

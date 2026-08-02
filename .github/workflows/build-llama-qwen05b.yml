@@ -1,0 +1,101 @@
+name: Build llama.cpp and Smoke-Test Qwen 0.5B
+
+on:
+  push:
+    branches:
+      - qwen05b-artifact-relay
+    paths:
+      - '.github/workflows/build-llama-qwen05b.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-llama-qwen05b.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MODEL_REPO: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+      MODEL_FILE: qwen2.5-0.5b-instruct-q4_k_m.gguf
+      EXPECTED_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build
+          python -m pip install --upgrade 'huggingface_hub[hf_xet]>=0.34,<2'
+
+      - name: Download and verify official Qwen
+        run: |
+          mkdir -p model evidence
+          python - <<'PY'
+          import os
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              repo_id=os.environ['MODEL_REPO'],
+              filename=os.environ['MODEL_FILE'],
+              local_dir='model',
+          ))
+          PY
+          ACTUAL="$(sha256sum "model/$MODEL_FILE" | cut -d' ' -f1)"
+          test "$ACTUAL" = "$EXPECTED_SHA256"
+          echo "$ACTUAL  $MODEL_FILE" > evidence/model.sha256
+
+      - name: Build static llama-cli
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git llama.cpp
+          git -C llama.cpp rev-parse HEAD | tee evidence/llama_cpp_commit.txt
+          cmake -S llama.cpp -B llama.cpp/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGGML_NATIVE=OFF \
+            -DLLAMA_CURL=OFF \
+            -DBUILD_SHARED_LIBS=OFF
+          cmake --build llama.cpp/build --target llama-cli -j 2
+          mkdir -p runtime
+          cp llama.cpp/build/bin/llama-cli runtime/
+          chmod +x runtime/llama-cli
+          ldd runtime/llama-cli | tee evidence/llama_cli_ldd.txt
+          runtime/llama-cli --version | tee evidence/llama_cli_version.txt
+
+      - name: Live Russian smoke test
+        run: |
+          PROMPT=$'<|im_start|>system\nТы полезный русскоязычный ассистент. Отвечай одним коротким предложением.<|im_end|>\n<|im_start|>user\nПочему небо кажется голубым?<|im_end|>\n<|im_start|>assistant\n'
+          timeout 180s runtime/llama-cli \
+            -m "model/$MODEL_FILE" \
+            -p "$PROMPT" \
+            -n 80 -c 1024 -t 2 \
+            --temp 0.1 --single-turn --no-display-prompt --no-warmup \
+            > evidence/russian_smoke_stdout.txt \
+            2> evidence/russian_smoke_stderr.txt
+          test -s evidence/russian_smoke_stdout.txt
+          cat evidence/russian_smoke_stdout.txt
+          grep -Eiq 'свет|рассе|атмосфер|волны' evidence/russian_smoke_stdout.txt
+
+      - name: Hash evidence and runtime
+        if: always()
+        run: |
+          find runtime evidence -type f -print0 | sort -z | xargs -0 sha256sum > evidence/artifact_manifest.sha256
+
+      - name: Upload portable llama-cli
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-cli-ubuntu24-static-qwen-tested
+          path: |
+            runtime/llama-cli
+            evidence
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
