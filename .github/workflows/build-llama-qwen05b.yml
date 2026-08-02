@@ -71,12 +71,12 @@ jobs:
 
       - name: Live Russian smoke test
         run: |
-          PROMPT='<|im_start|>system\nТы полезный русскоязычный ассистент. Отвечай одним коротким предложением.<|im_end|>\n<|im_start|>user\nПочему небо кажется голубым?<|im_end|>\n<|im_start|>assistant\n'
-          runtime/llama-cli \
+          PROMPT=$'<|im_start|>system\nТы полезный русскоязычный ассистент. Отвечай одним коротким предложением.<|im_end|>\n<|im_start|>user\nПочему небо кажется голубым?<|im_end|>\n<|im_start|>assistant\n'
+          timeout 180s runtime/llama-cli \
             -m "model/$MODEL_FILE" \
             -p "$PROMPT" \
             -n 80 -c 1024 -t 2 \
-            --temp 0.1 --no-display-prompt --no-warmup \
+            --temp 0.1 --single-turn --no-display-prompt --no-warmup \
             > evidence/russian_smoke_stdout.txt \
             2> evidence/russian_smoke_stderr.txt
           test -s evidence/russian_smoke_stdout.txt
