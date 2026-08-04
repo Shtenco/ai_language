@@ -49,6 +49,13 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+extend-exclude = [
+  "benchmark_r22",
+  "benchmark_r23",
+  "benchmark_r23_swe",
+  "benchmark_r24",
+  "benchmark_r24_swe"
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
