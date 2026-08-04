@@ -1,0 +1,82 @@
+{
+  "format": "nexus-r24-external-manifest/1",
+  "created_utc": "2026-08-04T15:52:00Z",
+  "seed": 24080417,
+  "model": {
+    "repo": "Qwen/Qwen3-14B-GGUF",
+    "file": "Qwen3-14B-Q4_K_M.gguf",
+    "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+  },
+  "benchmarks": {
+    "mmlu_pro": {
+      "dataset": "TIGER-Lab/MMLU-Pro",
+      "config": "default",
+      "split": "test",
+      "sample_n": 30,
+      "exclude_stable_ids_seen_in_r23": [
+        "3097",
+        "3398",
+        "3158",
+        "6027",
+        "9082",
+        "7630",
+        "9527",
+        "5891",
+        "2539",
+        "9233",
+        "1271",
+        "1797",
+        "10792",
+        "1335",
+        "10000"
+      ]
+    },
+    "gpqa": {
+      "dataset": "idavidrein/gpqa",
+      "config": "gpqa_diamond",
+      "split": "train",
+      "sample_n": 30,
+      "exclude_stable_ids_seen_in_r23": []
+    },
+    "arc_challenge": {
+      "dataset": "allenai/ai2_arc",
+      "config": "ARC-Challenge",
+      "split": "test",
+      "sample_n": 30,
+      "exclude_stable_ids_seen_in_r23": [
+        "Mercury_7141750",
+        "Mercury_403234",
+        "Mercury_SC_408663",
+        "Mercury_7188580",
+        "NYSEDREGENTS_2008_8_42",
+        "Mercury_7252088",
+        "NYSEDREGENTS_2013_4_1",
+        "Mercury_7143010",
+        "Mercury_7081480",
+        "Mercury_SC_LBS10265",
+        "Mercury_410334",
+        "Mercury_SC_407247",
+        "Mercury_SC_416177",
+        "MCAS_2014_8_20",
+        "Mercury_416576"
+      ]
+    }
+  },
+  "sampling": "exclude every R2.3 stable_id listed in this manifest, then sort by sha256(seed|benchmark|stable_id|question) and take first sample_n; frozen before inference",
+  "modes": {
+    "A": "single direct closed-book answer",
+    "B": "single structured solver",
+    "C": "B plus an independent challenger; accept consensus directly and invoke a third arbitrator only on disagreement"
+  },
+  "scoring": "exact multiple-choice option letter",
+  "statistics": [
+    "accuracy",
+    "paired wins/losses",
+    "exact sign test",
+    "paired bootstrap 95% CI",
+    "B-to-C corrections and regressions",
+    "latency and arbitration rate"
+  ],
+  "claim_rule": "A gain is replicated only if all three benchmarks complete, aggregate C-A bootstrap CI excludes zero, C-A is non-negative on every benchmark, and C creates more corrections than regressions.",
+  "boundary": "Independent 90-task external panel, not an official full-dataset leaderboard submission. Mode C measures system-level compute-and-control gain, not new model parameters."
+}
