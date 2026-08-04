@@ -5,15 +5,19 @@ on:
     branches: [qwen3-14b-r21-relay]
   workflow_dispatch:
 
+concurrency:
+  group: nexus-r23-power-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   actions: read
 
 env:
-  MODEL_URL: https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf?download=true
   MODEL_SHA256: 500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
   MODEL_FILE: Qwen3-14B-Q4_K_M.gguf
   MODEL_CACHE_KEY: qwen3-14b-q4km-500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0-v1
+  RELAY_RUN_ID: 30871502367
   LLAMA_TAG: b9637
   NEXUS_LLM_API: http://127.0.0.1:8080/v1/chat/completions
   NEXUS_LLM_MODEL: qwen3-14b
@@ -32,18 +36,31 @@ jobs:
           path: model/${{ env.MODEL_FILE }}
           key: ${{ env.MODEL_CACHE_KEY }}
 
-      - name: Download and verify frozen model on cache miss
+      - name: Download verified relay parts on cache miss
+        if: steps.restore-model.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwen3-14b-q4km-part-*
+          path: relay-parts
+          merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: ${{ env.RELAY_RUN_ID }}
+
+      - name: Reassemble frozen model on cache miss
         if: steps.restore-model.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
-          mkdir -p model
-          curl -fL --retry 12 --retry-all-errors --retry-delay 10 --continue-at - \
-            "$MODEL_URL" -o "model/$MODEL_FILE"
+          mkdir -p model runtime
+          find relay-parts -type f -name '*.part-*' | sort | tee runtime/relay-parts.txt
+          test "$(wc -l < runtime/relay-parts.txt)" -eq 7
+          while IFS= read -r part; do cat "$part"; done \
+            < runtime/relay-parts.txt > "model/$MODEL_FILE"
           echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
           stat -c '%n %s bytes' "model/$MODEL_FILE"
 
-      - name: Verify restored or downloaded model
+      - name: Verify restored or reassembled model
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -80,13 +97,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore and verify frozen model
+      - name: Restore frozen model
         uses: actions/cache/restore@v4
         with:
           path: model/${{ env.MODEL_FILE }}
           key: ${{ env.MODEL_CACHE_KEY }}
           fail-on-cache-miss: true
-      - shell: bash
+
+      - name: Verify frozen model
+        shell: bash
         run: |
           set -Eeuo pipefail
           echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
@@ -140,7 +159,8 @@ jobs:
             --jinja --no-webui > "$LOG" 2>&1 &
           echo $! > runtime/llama-server.pid
           for i in $(seq 1 240); do
-            if curl -fsS http://127.0.0.1:8080/health > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/health.json"; then
+            if curl -fsS http://127.0.0.1:8080/health \
+              > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/health.json"; then
               exit 0
             fi
             if ! kill -0 "$(cat runtime/llama-server.pid)" 2>/dev/null; then
