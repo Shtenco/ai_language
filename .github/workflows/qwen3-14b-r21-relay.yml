@@ -3,6 +3,8 @@ name: Qwen3 14B R2.1 Artifact Relay
 on:
   push:
     branches: [qwen3-14b-r21-relay]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
