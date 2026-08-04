@@ -1,0 +1,146 @@
+name: NEXUS R2.2 Frozen A-B-C Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'benchmark_r22/**'
+      - '.github/workflows/nexus-r22-ab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MODEL_URL: https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf?download=true
+      MODEL_SHA256: 500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
+      MODEL_FILE: Qwen3-14B-Q4_K_M.gguf
+      LLAMA_TAG: b9637
+      NEXUS_LLM_API: http://127.0.0.1:8080/v1/chat/completions
+      NEXUS_LLM_MODEL: qwen3-14b
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p benchmark_r22/results runtime
+          uname -a | tee runtime/uname.txt
+          lscpu | tee runtime/lscpu.txt
+          free -h | tee runtime/memory-before.txt
+          df -h | tee runtime/disk-before.txt
+          sha256sum benchmark_r22/dataset.json | tee runtime/dataset.sha256
+
+      - name: Download and verify frozen Qwen3-14B
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p model
+          curl -fL --retry 12 --retry-all-errors --retry-delay 10 --continue-at - \
+            "$MODEL_URL" -o "model/$MODEL_FILE"
+          echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
+          stat -c '%n %s bytes' "model/$MODEL_FILE" | tee runtime/model-size.txt
+
+      - name: Install pinned llama.cpp runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+          if curl -fL --retry 5 "$URL" -o llama.tar.gz; then
+            mkdir -p llama-bin
+            tar -xzf llama.tar.gz -C llama-bin
+          else
+            git clone --depth 1 --branch "$LLAMA_TAG" https://github.com/ggml-org/llama.cpp.git llama-src
+            cmake -S llama-src -B llama-src/build -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
+            cmake --build llama-src/build --config Release -j2 --target llama-server
+            mkdir -p llama-bin
+            cp llama-src/build/bin/llama-server llama-bin/
+          fi
+          SERVER="$(find llama-bin -type f -name llama-server | head -1)"
+          test -n "$SERVER"
+          chmod +x "$SERVER"
+          echo "$SERVER" > runtime/server-path.txt
+          "$SERVER" --version 2>&1 | tee runtime/llama-version.txt
+
+      - name: Start frozen inference server
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SERVER="$(cat runtime/server-path.txt)"
+          nohup "$SERVER" \
+            --model "model/$MODEL_FILE" \
+            --alias qwen3-14b \
+            --host 127.0.0.1 --port 8080 \
+            --ctx-size 2048 --batch-size 128 --ubatch-size 64 \
+            --threads 4 --threads-batch 4 \
+            --parallel 1 --jinja --no-webui \
+            > runtime/llama-server.log 2>&1 &
+          echo $! > runtime/llama-server.pid
+          for i in $(seq 1 180); do
+            if curl -fsS http://127.0.0.1:8080/health > runtime/health.json; then exit 0; fi
+            if ! kill -0 "$(cat runtime/llama-server.pid)" 2>/dev/null; then
+              cat runtime/llama-server.log
+              exit 1
+            fi
+            sleep 5
+          done
+          cat runtime/llama-server.log
+          exit 1
+
+      - name: Run preregistered A-B-C benchmark
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r22/run_ab.py 2>&1 | tee runtime/benchmark-console.log
+
+      - name: Seal reproducibility manifest
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          free -h | tee runtime/memory-after.txt
+          df -h | tee runtime/disk-after.txt
+          python3 - <<'PY'
+          import hashlib, json, os, platform, subprocess
+          from pathlib import Path
+          def sha(p):
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          files={}
+          for p in sorted(Path('benchmark_r22').rglob('*')):
+              if p.is_file(): files[str(p)]=sha(p)
+          payload={
+            'format':'nexus-r22-runtime-manifest/1',
+            'git_sha':os.environ.get('GITHUB_SHA'),
+            'run_id':os.environ.get('GITHUB_RUN_ID'),
+            'model_file':os.environ.get('MODEL_FILE'),
+            'model_sha256':os.environ.get('MODEL_SHA256'),
+            'llama_tag':os.environ.get('LLAMA_TAG'),
+            'python':platform.python_version(),
+            'platform':platform.platform(),
+            'files':files,
+          }
+          Path('runtime/RUNTIME_MANIFEST.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+          PY
+          cp runtime/RUNTIME_MANIFEST.json benchmark_r22/results/ 2>/dev/null || true
+          cp runtime/llama-version.txt benchmark_r22/results/ 2>/dev/null || true
+          cp runtime/llama-server.log benchmark_r22/results/ 2>/dev/null || true
+
+      - name: Upload complete benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-r22-qwen3-14b-ab-results
+          path: |
+            benchmark_r22/dataset.json
+            benchmark_r22/run_ab.py
+            benchmark_r22/results/
+            runtime/
+          compression-level: 6
+          retention-days: 7
