@@ -1,0 +1,246 @@
+name: NEXUS R2.3 Matched-Compute Power Benchmark
+
+on:
+  pull_request:
+    branches: [qwen3-14b-r21-relay]
+  workflow_dispatch:
+
+concurrency:
+  group: nexus-r23-power-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  MODEL_SHA256: 500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
+  MODEL_FILE: Qwen3-14B-Q4_K_M.gguf
+  MODEL_CACHE_KEY: qwen3-14b-q4km-500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0-v1
+  RELAY_RUN_ID: 30871502367
+  LLAMA_TAG: b9637
+  NEXUS_LLM_API: http://127.0.0.1:8080/v1/chat/completions
+  NEXUS_LLM_MODEL: qwen3-14b
+
+jobs:
+  prepare-model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore frozen model cache
+        id: restore-model
+        uses: actions/cache/restore@v4
+        with:
+          path: model/${{ env.MODEL_FILE }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Download verified relay parts on cache miss
+        if: steps.restore-model.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwen3-14b-q4km-part-*
+          path: relay-parts
+          merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: ${{ env.RELAY_RUN_ID }}
+
+      - name: Reassemble frozen model on cache miss
+        if: steps.restore-model.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p model runtime
+          find relay-parts -type f -name '*.part-*' | sort | tee runtime/relay-parts.txt
+          test "$(wc -l < runtime/relay-parts.txt)" -eq 7
+          while IFS= read -r part; do cat "$part"; done \
+            < runtime/relay-parts.txt > "model/$MODEL_FILE"
+          echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
+          stat -c '%n %s bytes' "model/$MODEL_FILE"
+
+      - name: Verify restored or reassembled model
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
+          stat -c '%n %s bytes' "model/$MODEL_FILE"
+
+      - name: Save frozen model cache
+        if: steps.restore-model.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: model/${{ env.MODEL_FILE }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+  evaluate:
+    needs: prepare-model
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - benchmark: mmlu_pro
+            shard: 0
+          - benchmark: mmlu_pro
+            shard: 1
+          - benchmark: arc_challenge
+            shard: 0
+          - benchmark: arc_challenge
+            shard: 1
+          - benchmark: gsm8k
+            shard: 0
+          - benchmark: gsm8k
+            shard: 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore frozen model
+        uses: actions/cache/restore@v4
+        with:
+          path: model/${{ env.MODEL_FILE }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+          fail-on-cache-miss: true
+
+      - name: Verify frozen model
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
+
+      - name: Install frozen benchmark dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check datasets huggingface_hub
+          mkdir -p "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}"
+          python3 -m pip freeze > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/pip-freeze.txt"
+          uname -a > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/uname.txt"
+          lscpu > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/lscpu.txt"
+          free -h > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/memory-before.txt"
+          sha256sum benchmark_r23_power/manifest.json benchmark_r23_power/run_power.py \
+            > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/preregistered.sha256"
+
+      - name: Install pinned llama.cpp runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+          if curl -fL --retry 5 "$URL" -o llama.tar.gz; then
+            mkdir -p llama-bin
+            tar -xzf llama.tar.gz -C llama-bin
+          else
+            git clone --depth 1 --branch "$LLAMA_TAG" https://github.com/ggml-org/llama.cpp.git llama-src
+            cmake -S llama-src -B llama-src/build -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
+            cmake --build llama-src/build --config Release -j2 --target llama-server
+            mkdir -p llama-bin
+            cp llama-src/build/bin/llama-server llama-bin/
+          fi
+          SERVER="$(find llama-bin -type f -name llama-server | head -1)"
+          test -n "$SERVER"
+          chmod +x "$SERVER"
+          echo "$SERVER" > runtime/server-path.txt
+          "$SERVER" --version 2>&1 | tee "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/llama-version.txt"
+
+      - name: Start frozen Qwen3-14B server
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SERVER="$(cat runtime/server-path.txt)"
+          LOG="runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/llama-server.log"
+          nohup "$SERVER" \
+            --model "model/$MODEL_FILE" \
+            --alias qwen3-14b \
+            --host 127.0.0.1 --port 8080 \
+            --ctx-size 3072 --batch-size 128 --ubatch-size 64 \
+            --threads 4 --threads-batch 4 --parallel 1 \
+            --jinja --no-webui > "$LOG" 2>&1 &
+          echo $! > runtime/llama-server.pid
+          for i in $(seq 1 240); do
+            if curl -fsS http://127.0.0.1:8080/health \
+              > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/health.json"; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat runtime/llama-server.pid)" 2>/dev/null; then
+              cat "$LOG"
+              exit 1
+            fi
+            sleep 5
+          done
+          cat "$LOG"
+          exit 1
+
+      - name: Run frozen matched-compute shard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r23_power/run_power.py \
+            --benchmark '${{ matrix.benchmark }}' \
+            --shard-index '${{ matrix.shard }}' \
+            2>&1 | tee "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/benchmark-console.log"
+
+      - name: Seal shard evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          free -h > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/memory-after.txt"
+          find "benchmark_r23_power/results/${{ matrix.benchmark }}/shard-${{ matrix.shard }}" \
+            "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}" -type f -print0 2>/dev/null \
+            | sort -z | xargs -0 -r sha256sum \
+            > "runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/FILES_SHA256.txt"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nexus-r23-power-${{ matrix.benchmark }}-${{ matrix.shard }}
+          path: |
+            benchmark_r23_power/manifest.json
+            benchmark_r23_power/run_power.py
+            benchmark_r23_power/results/${{ matrix.benchmark }}/shard-${{ matrix.shard }}/
+            runtime/${{ matrix.benchmark }}-${{ matrix.shard }}/
+          retention-days: 14
+          compression-level: 6
+
+  aggregate:
+    needs: evaluate
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download every shard artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nexus-r23-power-*
+          path: benchmark_r23_power/downloaded
+          merge-multiple: true
+
+      - name: Aggregate, score and apply claim gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r23_power/aggregate.py \
+            2>&1 | tee benchmark_r23_power/aggregate-console.log
+          sha256sum \
+            benchmark_r23_power/manifest.json \
+            benchmark_r23_power/run_power.py \
+            benchmark_r23_power/aggregate.py \
+            benchmark_r23_power/aggregate/* \
+            > benchmark_r23_power/aggregate/SEALED_SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nexus-r23-power-final-report
+          path: |
+            benchmark_r23_power/manifest.json
+            benchmark_r23_power/run_power.py
+            benchmark_r23_power/aggregate.py
+            benchmark_r23_power/aggregate-console.log
+            benchmark_r23_power/aggregate/
+          retention-days: 30
+          compression-level: 6

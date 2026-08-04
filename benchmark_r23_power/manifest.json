@@ -1,0 +1,74 @@
+{
+  "format": "nexus-r23-power-matched/1",
+  "created_utc": "2026-08-04T15:53:00Z",
+  "seed": 23080423,
+  "model": {
+    "repository": "Qwen/Qwen3-14B-GGUF",
+    "file": "Qwen3-14B-Q4_K_M.gguf",
+    "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+  },
+  "benchmarks": {
+    "mmlu_pro": {
+      "dataset": "TIGER-Lab/MMLU-Pro",
+      "config": "default",
+      "split": "test",
+      "sample_n": 30,
+      "shards": 2
+    },
+    "arc_challenge": {
+      "dataset": "allenai/ai2_arc",
+      "config": "ARC-Challenge",
+      "split": "test",
+      "sample_n": 30,
+      "shards": 2
+    },
+    "gsm8k": {
+      "dataset": "openai/gsm8k",
+      "config": "main",
+      "split": "test",
+      "sample_n": 30,
+      "shards": 2
+    }
+  },
+  "sampling": "category-aware deterministic SHA-256 ranking, frozen seed, then round-robin shard assignment",
+  "modes": {
+    "A": {
+      "name": "raw_single",
+      "llm_calls_per_task": 1,
+      "tools": []
+    },
+    "B": {
+      "name": "matched_compute_vanilla",
+      "llm_calls_per_task": 2,
+      "tools": ["confidence_tie_break_only"]
+    },
+    "C": {
+      "name": "nexus_executable_runtime",
+      "llm_calls_per_task": 2,
+      "tools": [
+        "typed_exact_arithmetic",
+        "blackboard",
+        "contradiction_detector",
+        "deterministic_arbitration"
+      ]
+    }
+  },
+  "primary_comparison": "C_vs_B",
+  "secondary_comparison": "C_vs_A",
+  "scoring": {
+    "mmlu_pro": "exact option letter",
+    "arc_challenge": "exact option letter",
+    "gsm8k": "exact canonical rational/numeric answer"
+  },
+  "statistics": [
+    "accuracy",
+    "paired wins/losses",
+    "two-sided exact sign test",
+    "paired bootstrap 95% confidence interval",
+    "beneficial and harmful correction counts",
+    "invalid answer rate",
+    "tool activation audit"
+  ],
+  "claim_gate": "architecture gain is supported only if C>B, the paired bootstrap lower bound is above zero, and exact p<0.05",
+  "boundary": "This is a 90-item independently sourced matched-compute power benchmark, not an official full-dataset leaderboard submission. GPQA is excluded because the official dataset is gated. SWE-bench remains a separate Docker-resolved benchmark."
+}
