@@ -1,0 +1,67 @@
+name: NEXUS R2.3 Real Source Inspect
+
+on:
+  pull_request:
+    branches: [qwen3-14b-r21-relay]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frozen R2.1 source archive
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p runtime/source
+          URL1='https://drive.usercontent.google.com/download?id=1Pp9fu0hHxZo-2DoX3UpZx37wLDdNY6Zd&export=download&confirm=t'
+          URL2='https://drive.google.com/uc?export=download&id=1Pp9fu0hHxZo-2DoX3UpZx37wLDdNY6Zd'
+          if ! curl -fL --retry 5 --retry-all-errors "$URL1" -o runtime/NEXUS_R2.1_SOURCE.zip; then
+            curl -fL --retry 5 --retry-all-errors "$URL2" -o runtime/NEXUS_R2.1_SOURCE.zip
+          fi
+          stat -c '%n %s bytes' runtime/NEXUS_R2.1_SOURCE.zip
+          echo 'b2b9f2317a8b54a20beadb7133aed156572f657990e3549636ad32f31142637f  runtime/NEXUS_R2.1_SOURCE.zip' | sha256sum -c -
+          unzip -t runtime/NEXUS_R2.1_SOURCE.zip
+          unzip -q runtime/NEXUS_R2.1_SOURCE.zip -d runtime/source
+
+      - name: Inspect executable entry points
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          find runtime/source -maxdepth 4 -type f | sort | tee runtime/source-files.txt
+          {
+            printf '\n=== system.py ===\n'
+            sed -n '1,320p' runtime/source/nexus_r21/system.py
+            printf '\n=== __init__.py ===\n'
+            sed -n '1,240p' runtime/source/nexus_r21/__init__.py
+            printf '\n=== server ===\n'
+            sed -n '1,360p' runtime/source/scripts/nexus_openai_server.py
+            printf '\n=== alpha benchmark ===\n'
+            sed -n '1,360p' runtime/source/scripts/run_r21_alpha_benchmark.py
+          } | tee runtime/entrypoints.txt
+          sha256sum runtime/source/nexus_r21/*.py runtime/source/scripts/*.py | tee runtime/source-python.sha256
+
+      - name: Run source unit tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd runtime/source
+          python3 -m pip install --disable-pip-version-check pytest
+          PYTHONPATH=. pytest -q | tee ../pytest.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nexus-r23-real-source-inspect
+          path: |
+            runtime/source-files.txt
+            runtime/entrypoints.txt
+            runtime/source-python.sha256
+            runtime/pytest.log
+          retention-days: 14
