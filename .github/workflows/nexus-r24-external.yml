@@ -1,0 +1,224 @@
+name: NEXUS R2.4 Adaptive Consensus Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'benchmark_r24/**'
+      - '.github/workflows/nexus-r24-external.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        benchmark: [mmlu_pro, gpqa, arc_challenge]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MODEL_URL: https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf?download=true
+      MODEL_SHA256: 500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
+      MODEL_FILE: Qwen3-14B-Q4_K_M.gguf
+      LLAMA_TAG: b9637
+      NEXUS_LLM_API: http://127.0.0.1:8080/v1/chat/completions
+      NEXUS_LLM_MODEL: qwen3-14b
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment and preregistration evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p runtime_r24/${{ matrix.benchmark }} benchmark_r24/results/${{ matrix.benchmark }}
+          uname -a | tee runtime_r24/${{ matrix.benchmark }}/uname.txt
+          lscpu | tee runtime_r24/${{ matrix.benchmark }}/lscpu.txt
+          free -h | tee runtime_r24/${{ matrix.benchmark }}/memory-before.txt
+          df -h | tee runtime_r24/${{ matrix.benchmark }}/disk-before.txt
+          sha256sum benchmark_r24/manifest.json benchmark_r24/run_external.py \
+            | tee runtime_r24/${{ matrix.benchmark }}/preregistered-files.sha256
+
+      - name: Install pinned dataset clients
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check \
+            'datasets==5.0.1' 'huggingface_hub==1.26.0'
+          python3 -m pip freeze | tee runtime_r24/${{ matrix.benchmark }}/pip-freeze.txt
+
+      - name: Probe and freeze dataset shard
+        id: access
+        shell: bash
+        run: |
+          set +e
+          python3 benchmark_r24/run_external.py --benchmark '${{ matrix.benchmark }}' --probe-only \
+            2>&1 | tee runtime_r24/${{ matrix.benchmark }}/dataset-probe.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -eq 42 ]; then
+            echo 'runnable=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$STATUS" -ne 0 ]; then
+            exit "$STATUS"
+          fi
+          echo 'runnable=true' >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify frozen Qwen3-14B
+        if: steps.access.outputs.runnable == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p model
+          curl -fL --retry 12 --retry-all-errors --retry-delay 10 --continue-at - \
+            "$MODEL_URL" -o "model/$MODEL_FILE"
+          echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
+          stat -c '%n %s bytes' "model/$MODEL_FILE" \
+            | tee runtime_r24/${{ matrix.benchmark }}/model-size.txt
+
+      - name: Install pinned llama.cpp runtime
+        if: steps.access.outputs.runnable == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+          if curl -fL --retry 5 "$URL" -o llama.tar.gz; then
+            mkdir -p llama-bin
+            tar -xzf llama.tar.gz -C llama-bin
+          else
+            git clone --depth 1 --branch "$LLAMA_TAG" https://github.com/ggml-org/llama.cpp.git llama-src
+            cmake -S llama-src -B llama-src/build -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
+            cmake --build llama-src/build --config Release -j2 --target llama-server
+            mkdir -p llama-bin
+            cp llama-src/build/bin/llama-server llama-bin/
+          fi
+          SERVER="$(find llama-bin -type f -name llama-server | head -1)"
+          test -n "$SERVER"
+          chmod +x "$SERVER"
+          echo "$SERVER" > runtime_r24/${{ matrix.benchmark }}/server-path.txt
+          "$SERVER" --version 2>&1 | tee runtime_r24/${{ matrix.benchmark }}/llama-version.txt
+
+      - name: Start inference server
+        if: steps.access.outputs.runnable == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SERVER="$(cat runtime_r24/${{ matrix.benchmark }}/server-path.txt)"
+          nohup "$SERVER" \
+            --model "model/$MODEL_FILE" \
+            --alias qwen3-14b \
+            --host 127.0.0.1 --port 8080 \
+            --ctx-size 2048 --batch-size 128 --ubatch-size 64 \
+            --threads 4 --threads-batch 4 \
+            --parallel 1 --jinja --no-webui \
+            > runtime_r24/${{ matrix.benchmark }}/llama-server.log 2>&1 &
+          echo $! > runtime_r24/${{ matrix.benchmark }}/llama-server.pid
+          for i in $(seq 1 180); do
+            if curl -fsS http://127.0.0.1:8080/health \
+              > runtime_r24/${{ matrix.benchmark }}/health.json; then exit 0; fi
+            if ! kill -0 "$(cat runtime_r24/${{ matrix.benchmark }}/llama-server.pid)" 2>/dev/null; then
+              cat runtime_r24/${{ matrix.benchmark }}/llama-server.log
+              exit 1
+            fi
+            sleep 5
+          done
+          cat runtime_r24/${{ matrix.benchmark }}/llama-server.log
+          exit 1
+
+      - name: Run frozen R2.4 benchmark shard
+        if: steps.access.outputs.runnable == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r24/run_external.py --benchmark '${{ matrix.benchmark }}' \
+            2>&1 | tee runtime_r24/${{ matrix.benchmark }}/benchmark-console.log
+
+      - name: Seal shard evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          free -h | tee runtime_r24/${{ matrix.benchmark }}/memory-after.txt
+          df -h | tee runtime_r24/${{ matrix.benchmark }}/disk-after.txt
+          python3 - <<'PY'
+          import hashlib, json, os, platform
+          from pathlib import Path
+          benchmark = os.environ['MATRIX_BENCHMARK']
+          def sha(path):
+              h = hashlib.sha256()
+              with open(path, 'rb') as handle:
+                  for block in iter(lambda: handle.read(1024 * 1024), b''):
+                      h.update(block)
+              return h.hexdigest()
+          files = {}
+          for root in [Path('benchmark_r24'), Path('runtime_r24') / benchmark]:
+              for path in sorted(root.rglob('*')):
+                  if path.is_file():
+                      files[str(path)] = sha(path)
+          payload = {
+              'format': 'nexus-r24-runtime-manifest/1',
+              'benchmark': benchmark,
+              'git_sha': os.environ.get('GITHUB_SHA'),
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'model_sha256': os.environ.get('MODEL_SHA256'),
+              'llama_tag': os.environ.get('LLAMA_TAG'),
+              'python': platform.python_version(),
+              'platform': platform.platform(),
+              'files': files,
+          }
+          target = Path('runtime_r24') / benchmark / 'RUNTIME_MANIFEST.json'
+          target.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+          PY
+        env:
+          MATRIX_BENCHMARK: ${{ matrix.benchmark }}
+
+      - name: Upload benchmark shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-r24-${{ matrix.benchmark }}
+          path: |
+            benchmark_r24/manifest.json
+            benchmark_r24/run_external.py
+            benchmark_r24/results/${{ matrix.benchmark }}/
+            runtime_r24/${{ matrix.benchmark }}/
+          compression-level: 6
+          retention-days: 14
+
+  aggregate:
+    if: always()
+    needs: evaluate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all benchmark shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nexus-r24-*
+          path: benchmark_r24/collected
+          merge-multiple: true
+
+      - name: Aggregate paired results and enforce honest claim gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r24/aggregate.py
+          find benchmark_r24/aggregate -maxdepth 2 -type f -print -exec sha256sum {} \;
+
+      - name: Upload sealed aggregate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-r24-external-aggregate
+          path: |
+            benchmark_r24/manifest.json
+            benchmark_r24/aggregate.py
+            benchmark_r24/aggregate/
+            benchmark_r24/collected/
+          compression-level: 6
+          retention-days: 14
