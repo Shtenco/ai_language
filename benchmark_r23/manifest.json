@@ -1,0 +1,24 @@
+{
+  "format": "nexus-r23-external-manifest/1",
+  "created_utc": "2026-08-04T13:15:00Z",
+  "seed": 230804,
+  "model": {
+    "repo": "Qwen/Qwen3-14B-GGUF",
+    "file": "Qwen3-14B-Q4_K_M.gguf",
+    "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+  },
+  "benchmarks": {
+    "mmlu_pro": {"dataset": "TIGER-Lab/MMLU-Pro", "config": "default", "split": "test", "sample_n": 15},
+    "gpqa": {"dataset": "idavidrein/gpqa", "config": "gpqa_diamond", "split": "train", "sample_n": 15},
+    "arc_challenge": {"dataset": "allenai/ai2_arc", "config": "ARC-Challenge", "split": "test", "sample_n": 15}
+  },
+  "sampling": "sort by sha256(seed|benchmark|stable_id|question), take first sample_n",
+  "modes": {
+    "A": "single direct closed-book answer",
+    "B": "single NEXUS structured decomposition and option elimination",
+    "C": "proposal, adversarial critic, evidence arbitration, final answer"
+  },
+  "scoring": "exact multiple-choice option letter",
+  "statistics": ["accuracy", "paired wins/losses", "exact sign test", "paired bootstrap 95% CI"],
+  "boundary": "This run is a stratified external pilot, not an official full-dataset leaderboard submission. Dataset repository SHA and selected task fingerprints are sealed in the output artifact."
+}
