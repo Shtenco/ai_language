@@ -55,9 +55,23 @@ jobs:
         shell: bash
         run: |
           set +e
-          python3 benchmark_r24/run_external.py --benchmark '${{ matrix.benchmark }}' --probe-only \
-            2>&1 | tee runtime_r24/${{ matrix.benchmark }}/dataset-probe.log
-          STATUS=${PIPESTATUS[0]}
+          LOG=runtime_r24/${{ matrix.benchmark }}/dataset-probe.log
+          : > "$LOG"
+          STATUS=1
+          for ATTEMPT in 1 2 3 4 5 6; do
+            echo "dataset probe attempt ${ATTEMPT}/6" | tee -a "$LOG"
+            python3 benchmark_r24/run_external.py --benchmark '${{ matrix.benchmark }}' --probe-only \
+              2>&1 | tee -a "$LOG"
+            STATUS=${PIPESTATUS[0]}
+            if [ "$STATUS" -eq 0 ] || [ "$STATUS" -eq 42 ]; then
+              break
+            fi
+            if grep -Eq '429 Too Many Requests|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout' "$LOG"; then
+              sleep $((ATTEMPT * 20))
+            else
+              break
+            fi
+          done
           set -e
           if [ "$STATUS" -eq 42 ]; then
             echo 'runnable=false' >> "$GITHUB_OUTPUT"
@@ -133,9 +147,25 @@ jobs:
         if: steps.access.outputs.runnable == 'true'
         shell: bash
         run: |
-          set -Eeuo pipefail
-          python3 benchmark_r24/run_external.py --benchmark '${{ matrix.benchmark }}' \
-            2>&1 | tee runtime_r24/${{ matrix.benchmark }}/benchmark-console.log
+          set +e
+          LOG=runtime_r24/${{ matrix.benchmark }}/benchmark-console.log
+          : > "$LOG"
+          STATUS=1
+          for ATTEMPT in 1 2 3 4 5 6; do
+            echo "benchmark load/inference attempt ${ATTEMPT}/6" | tee -a "$LOG"
+            python3 benchmark_r24/run_external.py --benchmark '${{ matrix.benchmark }}' \
+              2>&1 | tee -a "$LOG"
+            STATUS=${PIPESTATUS[0]}
+            if [ "$STATUS" -eq 0 ]; then
+              exit 0
+            fi
+            if grep -Eq '429 Too Many Requests|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout' "$LOG"; then
+              sleep $((ATTEMPT * 20))
+            else
+              exit "$STATUS"
+            fi
+          done
+          exit "$STATUS"
 
       - name: Seal shard evidence
         if: always()
