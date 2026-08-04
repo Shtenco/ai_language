@@ -1,0 +1,21 @@
+{
+  "format": "nexus-r24-swebench-manifest/1",
+  "created_utc": "2026-08-04T16:05:00Z",
+  "dataset": "princeton-nlp/SWE-bench_Verified",
+  "split": "test",
+  "instance_ids": ["sympy__sympy-20590"],
+  "model": {
+    "repo": "Qwen/Qwen3-14B-GGUF",
+    "file": "Qwen3-14B-Q4_K_M.gguf",
+    "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
+  },
+  "modes": {
+    "A": "direct exact-search/replace edit plan, canonicalized by git",
+    "B": "structured localization edit plan with one repair attempt, canonicalized by git",
+    "C": "structured proposal plus independent maintainer review; corrected plan is used only when valid, otherwise the valid proposal is retained"
+  },
+  "evaluation": "official SWE-bench Docker harness resolved status",
+  "patch_protocol": "the model never supplies the submitted unified diff; it supplies bounded exact edits and git emits the canonical patch after validation",
+  "anti_leakage": "gold patch, test_patch, FAIL_TO_PASS and PASS_TO_PASS are never placed in prompts or retrieval context",
+  "boundary": "One-instance official-harness pipeline repair and cognitive comparison; not a statistically meaningful leaderboard score."
+}

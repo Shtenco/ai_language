@@ -1,0 +1,207 @@
+name: NEXUS R2.4 SWE-bench Canonical Edit Pilot
+
+on:
+  pull_request:
+    paths:
+      - 'benchmark_r24_swe/**'
+      - '.github/workflows/nexus-r24-swebench.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swebench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MODEL_URL: https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf?download=true
+      MODEL_SHA256: 500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
+      MODEL_FILE: Qwen3-14B-Q4_K_M.gguf
+      LLAMA_TAG: b9637
+      SWE_SHA: f7bbbb2ccdf479001d6467c9e34af59e44a840f9
+      NEXUS_LLM_API: http://127.0.0.1:8080/v1/chat/completions
+      NEXUS_LLM_MODEL: qwen3-14b
+      INSTANCE_ID: sympy__sympy-20590
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment and preregistration evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p runtime_r24_swe benchmark_r24_swe/results
+          uname -a | tee runtime_r24_swe/uname.txt
+          lscpu | tee runtime_r24_swe/lscpu.txt
+          free -h | tee runtime_r24_swe/memory-before.txt
+          df -h | tee runtime_r24_swe/disk-before.txt
+          docker version | tee runtime_r24_swe/docker-version.txt
+          sha256sum benchmark_r24_swe/manifest.json benchmark_r24_swe/run_swe.py \
+            | tee runtime_r24_swe/preregistered-files.sha256
+
+      - name: Install official SWE-bench from pinned source tree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check \
+            'datasets==5.0.1' 'huggingface_hub==1.26.0'
+          git clone https://github.com/SWE-bench/SWE-bench.git swebench-src
+          git -C swebench-src checkout "$SWE_SHA"
+          test "$(git -C swebench-src rev-parse HEAD)" = "$SWE_SHA"
+          test -f swebench-src/swebench/harness/constants/fixtures/tokio-rs__tokio-6724.Cargo.lock
+          python3 -m pip install --disable-pip-version-check -e ./swebench-src
+          echo "$SWE_SHA" | tee runtime_r24_swe/swebench-repository-sha.txt
+          python3 -m pip freeze | tee runtime_r24_swe/pip-freeze.txt
+
+      - name: Verify harness imports from source and fixtures resolve
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/swebench-src
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import swebench
+          from swebench.harness.constants import MAP_REPO_VERSION_TO_SPECS
+          from swebench.harness.constants.rust import TOKIO_SPECS
+          print(swebench.__file__)
+          print(len(MAP_REPO_VERSION_TO_SPECS), len(TOKIO_SPECS))
+          PY
+
+      - name: Download and verify frozen Qwen3-14B
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p model
+          curl -fL --retry 12 --retry-all-errors --retry-delay 10 --continue-at - \
+            "$MODEL_URL" -o "model/$MODEL_FILE"
+          echo "$MODEL_SHA256  model/$MODEL_FILE" | sha256sum -c -
+          stat -c '%n %s bytes' "model/$MODEL_FILE" | tee runtime_r24_swe/model-size.txt
+
+      - name: Install pinned llama.cpp runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+          if curl -fL --retry 5 "$URL" -o llama.tar.gz; then
+            mkdir -p llama-bin
+            tar -xzf llama.tar.gz -C llama-bin
+          else
+            git clone --depth 1 --branch "$LLAMA_TAG" https://github.com/ggml-org/llama.cpp.git llama-src
+            cmake -S llama-src -B llama-src/build -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
+            cmake --build llama-src/build --config Release -j2 --target llama-server
+            mkdir -p llama-bin
+            cp llama-src/build/bin/llama-server llama-bin/
+          fi
+          SERVER="$(find llama-bin -type f -name llama-server | head -1)"
+          test -n "$SERVER"
+          chmod +x "$SERVER"
+          echo "$SERVER" > runtime_r24_swe/server-path.txt
+          "$SERVER" --version 2>&1 | tee runtime_r24_swe/llama-version.txt
+
+      - name: Start long-context inference server
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SERVER="$(cat runtime_r24_swe/server-path.txt)"
+          nohup "$SERVER" \
+            --model "model/$MODEL_FILE" \
+            --alias qwen3-14b \
+            --host 127.0.0.1 --port 8080 \
+            --ctx-size 8192 --batch-size 128 --ubatch-size 64 \
+            --threads 4 --threads-batch 4 \
+            --parallel 1 --jinja --no-webui \
+            > runtime_r24_swe/llama-server.log 2>&1 &
+          echo $! > runtime_r24_swe/llama-server.pid
+          for i in $(seq 1 300); do
+            if curl -fsS http://127.0.0.1:8080/health > runtime_r24_swe/health.json; then exit 0; fi
+            if ! kill -0 "$(cat runtime_r24_swe/llama-server.pid)" 2>/dev/null; then
+              cat runtime_r24_swe/llama-server.log
+              exit 1
+            fi
+            sleep 5
+          done
+          cat runtime_r24_swe/llama-server.log
+          exit 1
+
+      - name: Generate and canonicalize A-B-C patches without gold leakage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r24_swe/run_swe.py 2>&1 | tee runtime_r24_swe/generation-console.log
+
+      - name: Stop model server before Docker evaluation
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if test -f runtime_r24_swe/llama-server.pid; then
+            kill "$(cat runtime_r24_swe/llama-server.pid)" 2>/dev/null || true
+          fi
+          sleep 5
+          free -h | tee runtime_r24_swe/memory-before-harness.txt
+          df -h | tee runtime_r24_swe/disk-before-harness.txt
+
+      - name: Run official SWE-bench Docker harness for A-B-C
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/swebench-src
+        run: |
+          set -uo pipefail
+          mkdir -p runtime_r24_swe/harness
+          for MODE in A B C; do
+            echo "=== MODE ${MODE} ===" | tee "runtime_r24_swe/harness/${MODE}.log"
+            python3 -m swebench.harness.run_evaluation \
+              --dataset_name princeton-nlp/SWE-bench_Verified \
+              --split test \
+              --predictions_path "benchmark_r24_swe/results/predictions_${MODE}.jsonl" \
+              --max_workers 1 \
+              --instance_ids "$INSTANCE_ID" \
+              --run_id "nexus-r24-${MODE}" \
+              --timeout 1800 \
+              --cache_level env \
+              --clean false \
+              2>&1 | tee -a "runtime_r24_swe/harness/${MODE}.log"
+            echo "${PIPESTATUS[0]}" > "runtime_r24_swe/harness/${MODE}.exit_code"
+          done
+          exit 0
+
+      - name: Summarize official harness reports
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 benchmark_r24_swe/summarize.py 2>&1 | tee runtime_r24_swe/summary-console.log
+          free -h | tee runtime_r24_swe/memory-after.txt
+          df -h | tee runtime_r24_swe/disk-after.txt
+          find evaluation_results logs/run_evaluation benchmark_r24_swe/results -maxdepth 8 -type f -print 2>/dev/null \
+            | tee runtime_r24_swe/generated-files.txt || true
+
+      - name: Enforce harness infrastructure completion
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          summary = json.load(open('benchmark_r24_swe/results/SWE_SUMMARY.json'))
+          if not summary['infrastructure_complete']:
+              raise SystemExit('official harness did not emit all A/B/C reports')
+          PY
+
+      - name: Upload complete SWE-bench evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-r24-swebench-canonical-edit-pilot
+          path: |
+            benchmark_r24_swe/manifest.json
+            benchmark_r24_swe/run_swe.py
+            benchmark_r24_swe/summarize.py
+            benchmark_r24_swe/results/
+            runtime_r24_swe/
+            evaluation_results/
+            logs/run_evaluation/
+            logs/build_images/
+          compression-level: 6
+          retention-days: 14
