@@ -1,0 +1,119 @@
+name: Qwen3 14B R2.1 Artifact Relay
+
+on:
+  push:
+    branches: [qwen3-14b-r21-relay]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      MODEL_URL: https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf?download=true
+      MODEL_NAME: Qwen3-14B-Q4_K_M.gguf
+      EXPECTED_SHA256: 500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download official Qwen3-14B GGUF
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p relay/model relay/parts relay/evidence
+          curl -fL --retry 12 --retry-all-errors --retry-delay 10 \
+            --continue-at - "$MODEL_URL" -o "relay/model/$MODEL_NAME"
+          ACTUAL="$(sha256sum "relay/model/$MODEL_NAME" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED_SHA256"
+          stat -c '%n %s bytes' "relay/model/$MODEL_NAME"
+          split -b 1400M -d -a 2 "relay/model/$MODEL_NAME" "relay/parts/$MODEL_NAME.part-"
+          sha256sum relay/parts/* > relay/evidence/PARTS_SHA256.txt
+          printf '%s  %s\n' "$EXPECTED_SHA256" "$MODEL_NAME" > relay/evidence/MODEL_SHA256.txt
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          model=Path('relay/model/Qwen3-14B-Q4_K_M.gguf')
+          parts=[]
+          for p in sorted(Path('relay/parts').glob('*')):
+              parts.append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          payload={
+            'format':'nexus-r21-qwen3-14b-relay/1',
+            'repository':'Qwen/Qwen3-14B-GGUF',
+            'filename':model.name,
+            'bytes':model.stat().st_size,
+            'sha256':hashlib.sha256(model.read_bytes()).hexdigest(),
+            'license':'Apache-2.0',
+            'parts':parts,
+            'reassemble':'cat Qwen3-14B-Q4_K_M.gguf.part-* > Qwen3-14B-Q4_K_M.gguf',
+          }
+          Path('relay/evidence/QWEN3_14B_RELAY_MANIFEST.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-r21-evidence
+          path: relay/evidence/
+          compression-level: 0
+          retention-days: 3
+
+      - name: Upload part 00
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-00
+          path: relay/parts/*.part-00
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-01
+          path: relay/parts/*.part-01
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-02
+          path: relay/parts/*.part-02
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-03
+          path: relay/parts/*.part-03
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-04
+          path: relay/parts/*.part-04
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-05
+          path: relay/parts/*.part-05
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-06
+          path: relay/parts/*.part-06
+          compression-level: 0
+          retention-days: 3
+      - name: Upload part 07 if present
+        if: ${{ hashFiles('relay/parts/*.part-07') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-14b-q4km-part-07
+          path: relay/parts/*.part-07
+          compression-level: 0
+          retention-days: 3
