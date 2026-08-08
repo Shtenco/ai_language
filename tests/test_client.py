@@ -20,7 +20,7 @@ class FakeResponses:
 
 class FakeOpenAI:
     next_output = "hello"
-    last_instance: "FakeOpenAI | None" = None
+    last_instance: FakeOpenAI | None = None
 
     def __init__(self, *, api_key: str) -> None:
         self.api_key = api_key
