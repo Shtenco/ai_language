@@ -4,8 +4,48 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Format check
+        run: python -m ruff format --check .
+
+      - name: Test with coverage
+        run: python -m pytest --cov=ai_language --cov-report=term-missing
+
+  package:
+    name: Build package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -14,15 +54,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.12"
+          cache: pip
 
-      - name: Install dependencies
+      - name: Build wheel and sdist
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
-
-      - name: Lint
-        run: ruff check .
-
-      - name: Test
-        run: pytest
+          python -m pip install --upgrade pip build
+          python -m build
