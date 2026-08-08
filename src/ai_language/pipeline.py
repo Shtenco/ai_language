@@ -94,15 +94,11 @@ def parse_instructions(source: str) -> tuple[Instruction, ...]:
         constraints: tuple[str, ...] = ()
         if separator:
             normalized = tuple(
-                _normalize_space(item)
-                for item in right.split(";")
-                if _normalize_space(item)
+                _normalize_space(item) for item in right.split(";") if _normalize_space(item)
             )
             constraints = normalized
 
-        instructions.append(
-            Instruction(action=action, target=target, constraints=constraints)
-        )
+        instructions.append(Instruction(action=action, target=target, constraints=constraints))
 
     if not instructions:
         raise ValueError("No valid instructions found in source.")
@@ -146,9 +142,7 @@ def build_semantic_graph(instructions: tuple[Instruction, ...]) -> SemanticGraph
 
         for constraint_idx, constraint in enumerate(instr.constraints, start=1):
             constraint_id = f"{node_id}_constraint_{constraint_idx}"
-            graph.nodes.append(
-                SemanticNode(id=constraint_id, kind="constraint", value=constraint)
-            )
+            graph.nodes.append(SemanticNode(id=constraint_id, kind="constraint", value=constraint))
             graph.edges.append(
                 SemanticEdge(
                     source=node_id,

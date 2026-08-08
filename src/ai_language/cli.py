@@ -20,9 +20,7 @@ from .pipeline import IR_SCHEMA_VERSION, SUPPORTED_TARGETS, PipelineResult, comp
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ai-language",
-        description=(
-            "Deterministic AI Language DSL compiler with optional LLM planning runtime."
-        ),
+        description=("Deterministic AI Language DSL compiler with optional LLM planning runtime."),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -150,10 +148,7 @@ def _run_generate(args: argparse.Namespace) -> int:
         emit_ast=args.emit_ast,
         emit_ir=args.emit_ir,
     )
-    print(
-        f"Generated {result.target} -> {output} "
-        f"(fingerprint {result.fingerprint[:12]})"
-    )
+    print(f"Generated {result.target} -> {output} (fingerprint {result.fingerprint[:12]})")
     return 0
 
 
@@ -179,8 +174,7 @@ def _run_plan(args: argparse.Namespace) -> int:
     if args.emit_source:
         _write_text(args.emit_source, source)
     print(
-        f"Planned and generated {result.target} -> {output} "
-        f"(fingerprint {result.fingerprint[:12]})"
+        f"Planned and generated {result.target} -> {output} (fingerprint {result.fingerprint[:12]})"
     )
     return 0
 

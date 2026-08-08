@@ -90,9 +90,7 @@ def test_cli_plan_writes_source_and_code(tmp_path: Path, monkeypatch, capsys) ->
 
     assert rc == 0
     assert "planned_service" in out.read_text(encoding="utf-8")
-    assert source.read_text(encoding="utf-8") == (
-        "generate planned_service | retries; logging\n"
-    )
+    assert source.read_text(encoding="utf-8") == ("generate planned_service | retries; logging\n")
     assert "Planned and generated" in capsys.readouterr().out
 
 

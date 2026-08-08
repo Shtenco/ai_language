@@ -49,8 +49,8 @@ def test_c_like_targets_escape_quotes_and_backslashes() -> None:
 
     for target in ("c", "rust", "solidity", "kotlin"):
         code = compile_source(source, target=target).code
-        assert r'\\' in code
-        assert r'\"' in code
+        assert r"\\" in code
+        assert r"\"" in code
 
 
 def test_to_dict_is_json_ready_and_versioned() -> None:
