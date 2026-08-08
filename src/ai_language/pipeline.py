@@ -169,6 +169,10 @@ def _escape_c_like(value: str) -> str:
     )
 
 
+def _escape_kotlin(value: str) -> str:
+    return _escape_c_like(value).replace("$", "\\$")
+
+
 def _generated_lines(ast: ProgramAST) -> list[str]:
     return [render_instruction(item) for item in ast.instructions]
 
@@ -236,7 +240,7 @@ def _generate_solidity(ast: ProgramAST, fingerprint: str) -> str:
         f"        out = new string[]({len(ast.instructions)});",
     ]
     for idx, text in enumerate(_generated_lines(ast)):
-        lines.append(f'        out[{idx}] = "{_escape_c_like(text)}";')
+        lines.append(f'        out[{idx}] = unicode"{_escape_c_like(text)}";')
     lines.extend(["    }", "}"])
     return "\n".join(lines) + "\n"
 
@@ -248,7 +252,7 @@ def _generate_kotlin(ast: ProgramAST, fingerprint: str) -> str:
         "fun main() {",
     ]
     for text in _generated_lines(ast):
-        lines.append(f'    println("{_escape_c_like(text)}")')
+        lines.append(f'    println("{_escape_kotlin(text)}")')
     lines.append("}")
     return "\n".join(lines) + "\n"
 

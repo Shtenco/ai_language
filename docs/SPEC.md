@@ -85,7 +85,9 @@ Every v0.4 backend must:
 1. preserve normalized instruction order;
 2. preserve every normalized constraint;
 3. embed the semantic fingerprint;
-4. escape string content so quotes/backslashes do not break generated source;
+4. escape string content so target-language string syntax is preserved;
 5. produce deterministic bytes for the same normalized program and target.
+
+Backend-specific literal rules are part of lowering. Kotlin escapes `$` so source text cannot accidentally become a string template. Solidity emits `unicode"..."` string literals so non-ASCII UTF-8 instructions remain valid source.
 
 The current backends are semantic scaffolds, not general-purpose program synthesis.

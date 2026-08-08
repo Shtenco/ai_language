@@ -53,6 +53,19 @@ def test_c_like_targets_escape_quotes_and_backslashes() -> None:
         assert r"\"" in code
 
 
+def test_kotlin_escapes_dollar_templates() -> None:
+    code = compile_source("emit $HOME | preserve $PATH", target="kotlin").code
+
+    assert r"\$HOME" in code
+    assert r"\$PATH" in code
+
+
+def test_solidity_uses_unicode_literals() -> None:
+    code = compile_source("emit привет | мир", target="solidity").code
+
+    assert 'unicode"emit привет | мир"' in code
+
+
 def test_to_dict_is_json_ready_and_versioned() -> None:
     result = compile_source("deploy token_contract", target="solidity")
     payload = result.to_dict(include_code=False)
