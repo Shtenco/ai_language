@@ -1,4 +1,4 @@
-"""Configuration utilities for API key management."""
+"""Configuration utilities for model and API-key management."""
 
 from __future__ import annotations
 
@@ -20,13 +20,8 @@ def _load_dotenv_if_available() -> None:
 
 
 def get_api_key(explicit_key: str | None = None) -> str:
-    """Return API key from argument or environment.
-
-    Lookup order:
-    1. Explicit argument
-    2. OPENAI_API_KEY from environment / .env
-    """
-    if explicit_key:
+    """Return an API key from an explicit argument or ``OPENAI_API_KEY``."""
+    if explicit_key and explicit_key.strip():
         return explicit_key.strip()
 
     _load_dotenv_if_available()
@@ -35,5 +30,5 @@ def get_api_key(explicit_key: str | None = None) -> str:
         return env_key
 
     raise MissingAPIKeyError(
-        "OPENAI_API_KEY is not set. Pass --api-key or create a .env file with OPENAI_API_KEY=..."
+        "OPENAI_API_KEY is not set. Pass --api-key or define it in the environment/.env."
     )

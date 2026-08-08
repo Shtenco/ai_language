@@ -1,31 +1,31 @@
-"""Intermediate representations for AI Language Pro."""
+"""Intermediate representations used by AI Language Pro."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class Instruction:
-    """High-level instruction parsed from source text."""
+    """A normalized high-level instruction parsed from source text."""
 
     action: str
     target: str
-    constraints: list[str] = field(default_factory=list)
+    constraints: tuple[str, ...] = ()
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class SemanticNode:
-    """Node in semantic graph representation."""
+    """Node in the semantic graph."""
 
     id: str
     kind: str
     value: str
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class SemanticEdge:
-    """Edge in semantic graph representation."""
+    """Directed semantic relation between two graph nodes."""
 
     source: str
     relation: str
@@ -34,14 +34,14 @@ class SemanticEdge:
 
 @dataclass(slots=True)
 class SemanticGraph:
-    """Simple directed graph for program semantics."""
+    """Deterministic directed graph describing program semantics."""
 
     nodes: list[SemanticNode] = field(default_factory=list)
     edges: list[SemanticEdge] = field(default_factory=list)
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class ProgramAST:
-    """Root AST for AI Language Pro."""
+    """Root AST for a normalized AI Language program."""
 
-    instructions: list[Instruction]
+    instructions: tuple[Instruction, ...]

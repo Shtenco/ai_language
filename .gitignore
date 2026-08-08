@@ -1,12 +1,31 @@
+# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
+*.pyo
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
+
+# Environments / secrets
 .venv/
-dist/
-build/
+venv/
 .env
+.env.*
+!.env.example
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+
+# Generated local artifacts
+artifacts/
