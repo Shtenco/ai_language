@@ -1,0 +1,111 @@
+name: NEXUS R5.7 Concept-Graph Language AI
+on:
+  push:
+    branches: ["nexus-r57-concept-graph-language"]
+  workflow_dispatch:
+
+jobs:
+  train-and-falsify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch
+          print('torch', torch.__version__)
+          PY
+
+      - name: Download fixed Russian UD corpora
+        run: |
+          mkdir -p data/r57
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r57/ru_synt.train.a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r57/ru_synt.train.b.conllu
+          cat data/r57/ru_synt.train.a.conllu data/r57/ru_synt.train.b.conllu > data/r57/ru_synt.train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r57/ru_synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r57/ru_gsd.test.conllu
+          sha256sum data/r57/*.conllu > data/r57/UD_SHA256SUMS.txt
+
+      - name: Extract held-out UD text
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          def convert(src, dst):
+              out=[]
+              for line in Path(src).read_text(encoding='utf-8').splitlines():
+                  if line.startswith('# text = '):
+                      t=line[9:].strip()
+                      if t: out.append(t)
+              Path(dst).write_text('\n'.join(out)+'\n', encoding='utf-8')
+          convert('data/r57/ru_synt.test.conllu','data/r57/ru_synt_test.txt')
+          convert('data/r57/ru_gsd.test.conllu','data/r57/ru_gsd_test.txt')
+          PY
+
+      - name: Build UTF-8-safe diverse Russian corpus and disjoint graph memory
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        run: |
+          python benchmarks/prepare_r57_russian_corpus.py \
+            --synt-train data/r57/ru_synt.train.conllu \
+            --out data/r57/rich \
+            --wiki-train-mb 20 \
+            --wiki-memory-mb 5 \
+            --wiki-test-mb 3 \
+            --heritage-train-mb 6 \
+            --heritage-test-mb 2 \
+            --synt-train-mb 4 \
+            --max-doc-kb 24
+          cat data/r57/rich/CORPUS_META.json
+
+      - name: Train matched A-B-C-D and long A-vs-D models
+        run: |
+          TESTS=(
+            data/r57/ru_synt_test.txt
+            data/r57/ru_gsd_test.txt
+            data/r57/rich/ru_wiki_test.txt
+            data/r57/rich/ru_heritage_test.txt
+          )
+          python benchmarks/r57_concept_graph_language.py \
+            --train-text data/r57/rich/ru_train.txt \
+            --train-docs data/r57/rich/ru_train_docs.jsonl \
+            --memory-docs data/r57/rich/graph_memory_docs.jsonl \
+            --tests "${TESTS[@]}" \
+            --out nexus_r57_results \
+            --screen-seeds 11,29 \
+            --threads 2
+          cp data/r57/rich/CORPUS_META.json nexus_r57_results/
+          cp data/r57/UD_SHA256SUMS.txt nexus_r57_results/
+
+      - name: Print raw falsification samples
+        if: always()
+        run: |
+          if [ -f nexus_r57_results/03_RAW_RUSSIAN_GENERATIONS.txt ]; then
+            sed -n '1,260p' nexus_r57_results/03_RAW_RUSSIAN_GENERATIONS.txt
+          fi
+
+      - name: Archive reproducible evidence
+        if: always()
+        run: |
+          if [ -d nexus_r57_results ]; then
+            tar -czf NEXUS_R57_CONCEPT_GRAPH_LANGUAGE.tar.gz nexus_r57_results
+            sha256sum NEXUS_R57_CONCEPT_GRAPH_LANGUAGE.tar.gz | tee NEXUS_R57_SHA256.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R57_CONCEPT_GRAPH_LANGUAGE
+          path: |
+            nexus_r57_results/
+            NEXUS_R57_CONCEPT_GRAPH_LANGUAGE.tar.gz
+            NEXUS_R57_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
