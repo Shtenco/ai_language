@@ -1,0 +1,89 @@
+name: NEXUS R5.8 Latent Concept State
+on:
+  push:
+    branches: ["nexus-r58-latent-state"]
+  workflow_dispatch:
+
+jobs:
+  latent-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print('torch', torch.__version__)
+          PY
+      - name: Restore and validate R5.8 source
+        run: |
+          base64 -d benchmarks/r58_latent_concept_state.py.gz.b64 | gzip -d > benchmarks/r58_latent_concept_state.py
+          python -m py_compile benchmarks/r58_latent_concept_state.py
+          wc -c benchmarks/r58_latent_concept_state.py
+      - name: Download fixed Russian UD corpora
+        run: |
+          mkdir -p data/r58
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r58/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r58/b.conllu
+          cat data/r58/a.conllu data/r58/b.conllu > data/r58/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r58/synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r58/gsd.test.conllu
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r58/synt.test.conllu','data/r58/synt.txt'),('data/r58/gsd.test.conllu','data/r58/gsd.txt')]:
+              out=[x[9:].strip() for x in Path(src).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+              Path(dst).write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+      - name: Build disjoint train-memory-test corpus
+        env: {HF_HUB_DISABLE_TELEMETRY: '1'}
+        run: |
+          python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r58/train.conllu --out data/r58/rich
+          cat data/r58/rich/CORPUS_META.json
+      - name: Train A-null vs shuffled vs true latent graph state
+        run: |
+          python benchmarks/r58_latent_concept_state.py \
+            --train-text data/r58/rich/ru_train.txt \
+            --train-docs data/r58/rich/ru_train_docs.jsonl \
+            --memory-docs data/r58/rich/graph_memory_docs.jsonl \
+            --tests data/r58/synt.txt data/r58/gsd.txt data/r58/rich/ru_heritage_test.txt \
+            --out nexus_r58_results \
+            --modes A_NULL,S_SHUFFLED,D_TRUE \
+            --steps 768 --batch 8 --seed 20260810 --threads 2
+          cp data/r58/rich/CORPUS_META.json nexus_r58_results/
+          cp benchmarks/r58_latent_concept_state.py nexus_r58_results/R58_SOURCE.py
+      - name: Print evidence
+        if: always()
+        run: |
+          if [ -f nexus_r58_results/00_R58_RESULTS.json ]; then python - <<'PY'
+          import json
+          r=json.load(open('nexus_r58_results/00_R58_RESULTS.json',encoding='utf-8'))
+          print(json.dumps({'protocol':r['protocol'],'data':r['data']},ensure_ascii=False,indent=2))
+          for m,z in r['results'].items():
+              print('\nMODE',m)
+              print('training',z['training'])
+              print('bpb',{k:round(v['bpb'],6) for k,v in z['eval'].items()})
+              if z['logic_generation'] is not None: print('logic_acc',z['logic_generation']['accuracy'],'cyber_acc',z['cyber_generation']['accuracy'])
+          PY
+          fi
+          if [ -f nexus_r58_results/01_RAW_GENERATIONS.txt ]; then cat nexus_r58_results/01_RAW_GENERATIONS.txt; fi
+      - name: Archive evidence
+        if: always()
+        run: |
+          if [ -d nexus_r58_results ]; then
+            tar -czf NEXUS_R58_LATENT_STATE.tar.gz nexus_r58_results
+            sha256sum NEXUS_R58_LATENT_STATE.tar.gz > NEXUS_R58_SHA256.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R58_LATENT_STATE
+          path: |
+            nexus_r58_results/
+            NEXUS_R58_LATENT_STATE.tar.gz
+            NEXUS_R58_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
