@@ -566,7 +566,11 @@ class CodingAgent:
             raise ValueError("prompt must not be empty")
 
         repository_files = self.workspace.list_files(".", max_depth=5).splitlines()
-        trace = build_semantic_trace(prompt, repository_files)
+        trace = build_semantic_trace(
+            prompt,
+            repository_files,
+            repository_root=self.workspace.root,
+        )
         self.last_trace = trace
         semantic_context = trace.instruction_context()
 
