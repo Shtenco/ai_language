@@ -7,9 +7,10 @@ import os
 import shlex
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .config import DEFAULT_MODEL, get_api_key
 
@@ -178,9 +179,7 @@ class Workspace:
                 continue
             for idx, line in enumerate(text.splitlines(), start=1):
                 if needle in line.casefold():
-                    matches.append(
-                        f"{self._relative(candidate)}:{idx}: {line.strip()}"
-                    )
+                    matches.append(f"{self._relative(candidate)}:{idx}: {line.strip()}")
                     if len(matches) >= 120:
                         matches.append("... [search results truncated]")
                         return _clip("\n".join(matches))
@@ -239,7 +238,8 @@ class Workspace:
         self._require_approval("run_command", {"command": command})
         if not command.strip():
             raise ValueError("command must not be empty")
-        if any(token in command for token in ("&&", "||", ";", "|", ">", "<", "`", "$(")):
+        shell_operators = ("&&", "||", ";", "|", ">", "<", "`", "$(")
+        if any(token in command for token in shell_operators):
             raise WorkspaceSecurityError(
                 "Shell operators are disabled; run one direct command at a time"
             )
@@ -278,7 +278,15 @@ class Workspace:
                 "Inline Python (-c) is blocked; run repository scripts/modules instead"
             )
         if executable == "git" and len(args) > 1:
-            safe_git = {"status", "diff", "grep", "log", "show", "rev-parse", "ls-files"}
+            safe_git = {
+                "status",
+                "diff",
+                "grep",
+                "log",
+                "show",
+                "rev-parse",
+                "ls-files",
+            }
             if args[1] not in safe_git:
                 raise WorkspaceSecurityError(f"Mutating git subcommand is blocked: {args[1]}")
         clean_env = {
@@ -521,8 +529,10 @@ class CodingAgent:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
         response = self._create_response(prompt, self._previous_response_id)
+        max_steps = max(0, int(self.max_steps))
+        steps_used = 0
 
-        for _step in range(max(1, int(self.max_steps))):
+        while True:
             calls = [
                 item
                 for item in response.output
@@ -531,6 +541,8 @@ class CodingAgent:
             if not calls:
                 self._previous_response_id = response.id
                 return response.output_text.strip()
+            if steps_used >= max_steps:
+                break
 
             tool_outputs: list[dict[str, str]] = []
             for call in calls:
@@ -556,6 +568,7 @@ class CodingAgent:
                 )
 
             response = self._create_response(tool_outputs, response.id)
+            steps_used += 1
 
         raise AgentLimitError(
             f"Agent stopped after {self.max_steps} tool rounds. "
