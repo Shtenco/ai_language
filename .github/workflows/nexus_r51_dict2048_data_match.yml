@@ -1,0 +1,36 @@
+name: NEXUS R5.1 DICT2048 Data Match
+on:
+  push:
+    branches: ["nexus-r51-dict2048-real-lm"]
+  workflow_dispatch:
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install torch CPU
+        run: |
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Download corpora
+        run: |
+          mkdir -p data/real_lm
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/train.txt -o data/real_lm/wiki.train.txt
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/valid.txt -o data/real_lm/wiki.valid.txt
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/test.txt -o data/real_lm/wiki.test.txt
+          curl -fL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt -o data/real_lm/tinyshakespeare.txt
+      - name: Run raw-byte-matched control
+        run: |
+          python benchmarks/r51_dict2048_data_match.py \
+            --train data/real_lm/wiki.train.txt --valid data/real_lm/wiki.valid.txt \
+            --test data/real_lm/wiki.test.txt --shift data/real_lm/tinyshakespeare.txt \
+            --out nexus_r51_dict2048_data_match --seeds 11,29,47 --threads 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R51_DICT2048_DATA_MATCH
+          path: nexus_r51_dict2048_data_match/
+          retention-days: 30
