@@ -42,7 +42,7 @@ def test_read_only_mode_blocks_mutations(tmp_path) -> None:
         workspace.run_command("python -m compileall .")
 
 
-def test_agent_executes_function_call_loop(monkeypatch, tmp_path) -> None:
+def test_agent_executes_function_call_loop_at_step_boundary(monkeypatch, tmp_path) -> None:
     (tmp_path / "hello.txt").write_text("hello agent\n", encoding="utf-8")
     observed: list[dict] = []
 
@@ -66,6 +66,7 @@ def test_agent_executes_function_call_loop(monkeypatch, tmp_path) -> None:
         workspace=Workspace(tmp_path, auto_approve=True),
         api_key="test-key",
         model="gpt-5.6",
+        max_steps=1,
     )
 
     assert agent.run("Read hello.txt") == "done"
