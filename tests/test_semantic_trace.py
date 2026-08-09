@@ -19,19 +19,101 @@ def test_extract_requirements_builds_stable_ids_and_kinds() -> None:
     assert requirements[2].kind == "validation"
 
 
-def test_semantic_trace_contains_intent_and_repository_graphs() -> None:
+def test_semantic_trace_contains_python_symbols_imports_and_calls(tmp_path) -> None:
+    src = tmp_path / "src"
+    tests = tmp_path / "tests"
+    src.mkdir()
+    tests.mkdir()
+    (src / "parser.py").write_text(
+        "import json\n\n"
+        "class Parser:\n"
+        "    def parse(self, text):\n"
+        "        return normalize(text)\n\n"
+        "def normalize(text):\n"
+        "    return text.strip()\n",
+        encoding="utf-8",
+    )
+    (tests / "test_parser.py").write_text(
+        "from src.parser import normalize\n\n"
+        "def test_normalize():\n"
+        "    assert normalize(' x ') == 'x'\n",
+        encoding="utf-8",
+    )
+
     trace = build_semantic_trace(
         "Refactor parser and run tests",
         ["src/parser.py", "tests/test_parser.py"],
+        repository_root=tmp_path,
     )
 
-    assert trace.intent_graph.nodes[0].kind == "task"
-    assert {node.value for node in trace.repository_graph.nodes if node.kind == "file"} == {
-        "src/parser.py",
-        "tests/test_parser.py",
-    }
+    kinds = {node.kind for node in trace.repository_graph.nodes}
+    assert {"file", "class", "method", "function", "test", "module"} <= kinds
+    values = {node.value for node in trace.repository_graph.nodes}
+    assert "src/parser.py::Parser.parse" in values
+    assert "src/parser.py::normalize" in values
+    assert "tests/test_parser.py::test_normalize" in values
+
+    normalize_id = next(
+        node.id for node in trace.repository_graph.nodes if node.value == "src/parser.py::normalize"
+    )
+    test_id = next(
+        node.id
+        for node in trace.repository_graph.nodes
+        if node.value == "tests/test_parser.py::test_normalize"
+    )
+    assert any(
+        edge.source == test_id and edge.relation == "calls" and edge.target == normalize_id
+        for edge in trace.repository_graph.edges
+    )
     assert "REQ-1" in trace.instruction_context()
-    assert "src/parser.py" in trace.instruction_context()
+    assert "Parser.parse" in trace.instruction_context()
+
+
+def test_coverage_change_graph_and_impact_graph(tmp_path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "core.py").write_text(
+        "def calculate(value):\n    return value + 1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "tests" / "test_core.py").write_text(
+        "from src.core import calculate\n\n"
+        "def test_calculate():\n    assert calculate(1) == 2\n",
+        encoding="utf-8",
+    )
+    trace = build_semantic_trace(
+        "Update calculate. Run tests.",
+        ["src/core.py", "tests/test_core.py"],
+        repository_root=tmp_path,
+    )
+
+    trace.record(
+        "replace_in_file",
+        {"path": "src/core.py", "requirement_ids": ["REQ-1"]},
+        "Updated src/core.py; replaced 1 occurrence(s)",
+    )
+    assert trace.coverage()[0].status == "implemented"
+    assert trace.unresolved_requirement_ids() == ["REQ-2"]
+
+    trace.record(
+        "run_command",
+        {"command": "pytest", "requirement_ids": ["REQ-1", "REQ-2"]},
+        "exit_code=0",
+    )
+    coverage = {item.requirement_id: item for item in trace.coverage()}
+    assert coverage["REQ-1"].status == "verified"
+    assert coverage["REQ-2"].status == "verified"
+    assert trace.unresolved_requirement_ids() == []
+
+    change_relations = {edge.relation for edge in trace.change_graph().edges}
+    assert {"implemented_by", "validated_by", "targets"} <= change_relations
+    impact_values = {node.value for node in trace.impact_graph().nodes}
+    assert "src/core.py" in impact_values
+    assert "src/core.py::calculate" in impact_values
+    assert "tests/test_core.py::test_calculate" in impact_values
+    payload = trace.to_dict()
+    assert payload["schema"] == "ai-language.semantic-trace/v2"
+    assert payload["unresolved_requirement_ids"] == []
 
 
 def test_agent_records_requirement_to_change_trace(monkeypatch, tmp_path) -> None:
@@ -74,5 +156,6 @@ def test_agent_records_requirement_to_change_trace(monkeypatch, tmp_path) -> Non
     assert event.target == "demo.py"
     assert event.requirement_ids == ("REQ-1",)
     assert event.status == "ok"
+    assert agent.last_trace.coverage()[0].status == "implemented"
     assert "value = 2" not in agent.trace_json()
     assert "requirement_ids" in observed[0]["instructions"]
