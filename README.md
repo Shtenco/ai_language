@@ -1,64 +1,121 @@
 # AI Language Pro
 
-## 🌌 Новая эпоха программирования: когда мысль становится кодом
+**AI Language Pro** объединяет два слоя:
 
-Представьте, что вы больше не «пишете код» в привычном смысле.
-Вы формулируете **намерение** простыми словами — а система превращает его в исполняемую программу.
+1. LLM-meta язык: `instructions → semantic graph → AST → code → compiler → machine`.
+2. Локальный **AI coding agent** для работы с реальными репозиториями из терминала.
 
-**AI Language Pro** — это LLM-meta язык программирования и компиляции.
-Он строит мост между человеческой идеей и машинным выполнением:
+Никакого Node.js и `npm install`: CLI написан на Python и упакован для `pip` / `pipx`.
 
-`instructions → semantic graph → AST → Python/C/Rust/Solidity/Kotlin code → compiler → machine`
+## AI coding agent
 
-Это не «замена Python». Это уровень **выше** обычных языков — слой архитектурного управления программами.
+После установки пакет добавляет короткую команду `ail`.
 
----
+```bash
+pipx install ai-language-pro
+```
 
-## 🚀 Почему это принципиально круче обычных языков
+или:
 
-Обычные языки отвечают на вопрос: **«как именно реализовать?»**  
-AI Language Pro сначала отвечает на вопрос: **«что именно должно быть сделано и зачем?»**
+```bash
+python -m pip install ai-language-pro
+```
 
-### Что это даёт бизнесу и разработке
+Задайте ключ OpenAI:
 
-- **Скорость x10 на старте идей** — от инструкции к рабочему артефакту за минуты.
-- **Прозрачность решений** — semantic graph и AST показывают, как мысль превращается в программу.
-- **Мульти-платформенность с одного источника** — один intent, несколько языков вывода.
-- **Архитектурная масштабируемость** — идеальная основа для proto-agent систем нового поколения.
-- **Переход от «файлов кода» к «компилируемому смыслу»** — это и есть будущее программирования.
+```bash
+export OPENAI_API_KEY="sk-..."
+```
 
----
+PowerShell:
 
-## 🧠 Что такое LLM-meta язык простыми словами
+```powershell
+$env:OPENAI_API_KEY="sk-..."
+```
 
-LLM-meta язык — это язык, который программирует **не строки**, а **смысл**:
+Перейдите в любой Git-репозиторий и запустите:
 
-1. Вы задаёте инструкцию простым человеческим языком.
-2. Система строит карту смысла (semantic graph).
-3. Преобразует её в структурное представление (AST).
-4. Генерирует код под выбранную технологию.
-5. Проверяет/компилирует.
-6. Запускает на машине.
+```bash
+ail
+```
 
-В обычном мире вы думаете как компилятор.
-В AI Language Pro компилятор начинает думать как вы.
+Получится интерактивная сессия:
 
----
+```text
+AI Language Agent | model=gpt-5.6 | workspace=/path/to/project
+Commands: /help, /clear, /diff, /exit
+ail>
+```
 
-## ✅ Что уже реализовано (рабочий прототип на Python)
+Можно дать задачу одной командой:
 
-- Парсер `.ailang` инструкций.
-- Построение semantic graph.
-- Построение AST.
-- Генерация кода в 5 языков: Python, C, Rust, Solidity, Kotlin.
-- Валидация Python-кода через bytecode compile.
-- Машинный запуск Python-артефакта (`run`).
-- LLM runtime (`ask`) с ключом пользователя.
-- Тесты + линтинг + CI.
+```bash
+ail "Найди причину падения тестов, исправь код и снова запусти тесты"
+```
 
----
+По умолчанию агент просит подтверждение перед изменением файлов и запуском локальных команд. Для автономного режима:
 
-## ✍️ Формат AI Language
+```bash
+ail -y "Проведи рефакторинг parser, обнови тесты и проверь весь test suite"
+```
+
+Только анализ без изменений:
+
+```bash
+ail --read-only "Проведи архитектурный аудит проекта"
+```
+
+Выбор модели и reasoning effort:
+
+```bash
+ail --model gpt-5.6 --reasoning high "Оптимизируй критический путь"
+```
+
+Эквивалентная полная команда:
+
+```bash
+ai-language agent "Исправь баг"
+```
+
+## Что умеет агент
+
+- рекурсивно просматривать структуру репозитория;
+- читать файлы с номерами строк;
+- искать текст по проекту;
+- создавать и переписывать файлы;
+- выполнять точечные exact-text edits;
+- удалять отдельные файлы;
+- запускать тесты, линтеры, компиляторы и другие прямые локальные команды;
+- смотреть `git status` и `git diff`;
+- продолжать многошаговую задачу через Responses API tool-calling loop;
+- хранить контекст интерактивной сессии между запросами.
+
+### Локальные границы безопасности
+
+Agent tools привязаны к `--cwd` и не позволяют читать/писать пути за пределами workspace. `.env`, ключевые credential-файлы, `.ssh`, `.aws` и похожие secret locations скрываются от file tools. Привилегированные и явно разрушительные команды, shell chaining и mutating Git-команды блокируются.
+
+Для максимальной изоляции используйте:
+
+```bash
+ail --read-only
+```
+
+или запускайте агента в отдельном контейнере/VM.
+
+## Команды интерактивного режима
+
+```text
+/help   краткая справка
+/clear  сброс контекста модели
+/diff   git status + git diff
+/exit   выход
+```
+
+## AI Language compiler
+
+Существующий LLM-meta язык остаётся совместимым.
+
+Формат `.ailang`:
 
 ```text
 ACTION TARGET | constraint1; constraint2
@@ -72,83 +129,96 @@ validate contracts
 emit docs | concise
 ```
 
----
-
-## 🛠 CLI
-
-### 1) Генерация кода
+Генерация Python:
 
 ```bash
-ai-language generate examples/service.ailang --target python --out build/service.py --emit-graph build/graph.json
+ai-language generate examples/service.ailang \
+  --target python \
+  --out build/service.py \
+  --emit-graph build/graph.json
 ```
 
-### 2) Проверка (compiler validation)
+Поддерживаемые targets:
+
+- Python
+- C
+- Rust
+- Solidity
+- Kotlin
+
+Проверка сгенерированного Python:
 
 ```bash
 ai-language check build/service.py
 ```
 
-### 3) Запуск на машине (machine execution)
+Запуск:
 
 ```bash
 ai-language run build/service.py
 ```
 
-### 4) LLM runtime
+Одиночный LLM request:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
-ai-language ask "Спроектируй anti-fraud сервис для финтеха" --model gpt-4o-mini --temperature 0.2
+ai-language ask "Спроектируй anti-fraud сервис"
 ```
 
----
-
-## 🐍 Python SDK
+## Python SDK
 
 ```python
-from ai_language import compile_source
+from ai_language import CodingAgent, Workspace, compile_source
 
-source = """
-generate anti_fraud_service | observability; retries
-validate interfaces
-"""
-
-artifact = compile_source(source, target="rust")
+artifact = compile_source(
+    "generate anti_fraud_service | observability; retries",
+    target="rust",
+)
 print(artifact.code)
-print(len(artifact.semantic_graph.nodes), len(artifact.semantic_graph.edges))
 ```
 
----
+Agent primitives тоже доступны из Python:
 
-## ⚙️ Локальный запуск
+```python
+from pathlib import Path
+
+from ai_language import CodingAgent, Workspace
+
+workspace = Workspace(Path.cwd(), auto_approve=False)
+agent = CodingAgent(workspace=workspace, model="gpt-5.6")
+print(agent.run("Проанализируй архитектуру проекта"))
+```
+
+## Разработка
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
+python -m pip install -e ".[dev]"
+ruff check .
+pytest
+python -m build
 ```
 
----
+## Публикация в PyPI
 
-## 🧪 Тесты
+Репозиторий содержит `.github/workflows/publish.yml`. Workflow запускается при публикации GitHub Release, собирает wheel/sdist и отправляет их в PyPI через **Trusted Publishing (OIDC)** без хранения PyPI API token в GitHub secrets.
 
-```bash
-python -m ruff check .
-PYTHONPATH=src pytest -q
+Один раз в настройках проекта `ai-language-pro` на PyPI нужно добавить trusted publisher для:
+
+```text
+Owner: Shtenco
+Repository: ai_language
+Workflow: publish.yml
+Environment: pypi
 ```
 
----
+После этого обычный релиз GitHub публикует новую версию автоматически.
 
-## 💼 Коммерческая лицензия
+## Лицензия
 
-Проект распространяется по коммерческой лицензии.
-Коммерческое внедрение, кастомизация и интеграция в клиентские системы — по отдельному соглашению.
+Проект распространяется по коммерческой лицензии. Подробности: [LICENSE](LICENSE).
 
-Подробности: [LICENSE](LICENSE)
-
----
-
-## 💎 Донаты
+## Донаты
 
 - **ETH:** `0x980Ddb04c54979b3Ed23df4a7DBc7049b7d0D686`
 - **BTC:** `bc1q49rfm0p6qh6nlnm4az4yhhk9x82zfxwgtcnhvm`
