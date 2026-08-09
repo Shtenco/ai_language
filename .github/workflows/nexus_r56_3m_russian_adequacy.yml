@@ -37,18 +37,17 @@ jobs:
             --synt-test data/r56/ru_synt.test.conllu \
             --gsd-test data/r56/ru_gsd.test.conllu \
             --out data/r56/udprepared --per-lang-bytes 4000000
-      - name: Prepare diverse Russian pretraining corpus
+      - name: Prepare stable Russian pretraining corpus
         run: |
           python benchmarks/prepare_r56_russian_corpus.py \
             --synt-train data/r56/ru_synt.train.conllu \
             --out data/r56/rich \
-            --heritage-train-mb 10 --wiki-train-mb 6 --synt-train-mb 4 --heldout-mb 2
+            --heritage-train-mb 12 --synt-train-mb 6 --heldout-mb 2
           cat data/r56/rich/CORPUS_META.json
       - name: Run 3M sweep and Russian generation test
         run: |
           TESTS=(data/r56/udprepared/ru_synt_test.txt data/r56/udprepared/ru_gsd_shift.txt data/r56/wiki.test.txt data/r56/tinyshakespeare.txt)
           if [ -s data/r56/rich/ru_heritage_test.txt ]; then TESTS+=(data/r56/rich/ru_heritage_test.txt); fi
-          if [ -s data/r56/rich/ru_wikipedia_test.txt ]; then TESTS+=(data/r56/rich/ru_wikipedia_test.txt); fi
           python benchmarks/r56_3m_russian_adequacy.py \
             --train data/r56/rich/ru_train.txt \
             --tests "${TESTS[@]}" \
