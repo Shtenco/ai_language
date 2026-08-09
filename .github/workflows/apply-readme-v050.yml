@@ -1,0 +1,35 @@
+name: Apply README 0.5 semantic update
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-readme-v050.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/feature/repository-impact-graph'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feature/repository-impact-graph
+
+      - name: Apply README patch
+        run: python scripts/patch_readme_v050.py
+
+      - name: Remove temporary patch machinery
+        run: |
+          rm scripts/patch_readme_v050.py
+          rm .github/workflows/apply-readme-v050.yml
+
+      - name: Commit documentation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: document semantic repository and coverage graphs"
+          git push origin HEAD:feature/repository-impact-graph
