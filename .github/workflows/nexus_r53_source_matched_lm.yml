@@ -1,0 +1,52 @@
+name: NEXUS R5.3 Source-Matched Tokenizer LM
+on:
+  push:
+    branches: ["nexus-r53-tokenizer-lm-finalists"]
+  workflow_dispatch:
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install dependencies
+        run: |
+          python -m pip install sentencepiece
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Download real corpora
+        run: |
+          mkdir -p data/r53
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/train.txt -o data/r53/wiki.train.txt
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/test.txt -o data/r53/wiki.test.txt
+          curl -fL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt -o data/r53/tinyshakespeare.txt
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r53/ru_synt.train.a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r53/ru_synt.train.b.conllu
+          cat data/r53/ru_synt.train.a.conllu data/r53/ru_synt.train.b.conllu > data/r53/ru_synt.train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r53/ru_synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r53/ru_gsd.test.conllu
+          sha256sum data/r53/* > data/r53/CORPUS_SHA256SUMS.txt
+      - name: Prepare balanced EN-RU train
+        run: |
+          python benchmarks/prepare_r52_corpora.py --wiki-train data/r53/wiki.train.txt --synt-train data/r53/ru_synt.train.conllu --synt-test data/r53/ru_synt.test.conllu --gsd-test data/r53/ru_gsd.test.conllu --out data/r53/prepared --per-lang-bytes 5000000
+      - name: Run matched neural deathmatch
+        run: |
+          python benchmarks/r53_source_matched_lm.py \
+            --train data/r53/prepared/mixed_train.txt \
+            --tests data/r53/wiki.test.txt data/r53/tinyshakespeare.txt data/r53/prepared/ru_synt_test.txt data/r53/prepared/ru_gsd_shift.txt \
+            --out nexus_r53_results --seeds 11,29,47 --threads 2
+          cp data/r53/CORPUS_SHA256SUMS.txt nexus_r53_results/
+      - name: Archive
+        run: |
+          tar -czf NEXUS_R53_SOURCE_MATCHED_LM.tar.gz nexus_r53_results
+          sha256sum NEXUS_R53_SOURCE_MATCHED_LM.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R53_SOURCE_MATCHED_LM
+          path: |
+            nexus_r53_results/
+            NEXUS_R53_SOURCE_MATCHED_LM.tar.gz
+          retention-days: 30
