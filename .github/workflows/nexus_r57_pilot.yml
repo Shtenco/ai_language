@@ -1,0 +1,74 @@
+name: NEXUS R5.7 Pilot A-vs-D
+on:
+  push:
+    branches: ["nexus-r57-pilot"]
+  workflow_dispatch:
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print('torch',torch.__version__)
+          PY
+      - name: Download UD corpora
+        run: |
+          mkdir -p data/r57pilot
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r57pilot/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r57pilot/b.conllu
+          cat data/r57pilot/a.conllu data/r57pilot/b.conllu > data/r57pilot/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r57pilot/synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r57pilot/gsd.test.conllu
+      - name: Extract held-out text
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r57pilot/synt.test.conllu','data/r57pilot/synt.txt'),('data/r57pilot/gsd.test.conllu','data/r57pilot/gsd.txt')]:
+              out=[x[9:].strip() for x in Path(src).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+              Path(dst).write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+      - name: Build disjoint fast corpus
+        env: {HF_HUB_DISABLE_TELEMETRY: '1'}
+        run: |
+          python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r57pilot/train.conllu --out data/r57pilot/rich
+          cat data/r57pilot/rich/CORPUS_META.json
+      - name: Run accelerated A-vs-D pilot
+        run: |
+          python benchmarks/r57_pilot.py \
+            --train-text data/r57pilot/rich/ru_train.txt \
+            --train-docs data/r57pilot/rich/ru_train_docs.jsonl \
+            --memory-docs data/r57pilot/rich/graph_memory_docs.jsonl \
+            --tests data/r57pilot/synt.txt data/r57pilot/gsd.txt data/r57pilot/rich/ru_heritage_test.txt \
+            --out nexus_r57_pilot_results \
+            --screen-seeds 11 \
+            --threads 2
+          cp data/r57pilot/rich/CORPUS_META.json nexus_r57_pilot_results/
+      - name: Print raw samples
+        if: always()
+        run: |
+          if [ -f nexus_r57_pilot_results/03_RAW_RUSSIAN_GENERATIONS.txt ]; then cat nexus_r57_pilot_results/03_RAW_RUSSIAN_GENERATIONS.txt; fi
+      - name: Archive
+        if: always()
+        run: |
+          if [ -d nexus_r57_pilot_results ]; then
+            tar -czf NEXUS_R57_PILOT.tar.gz nexus_r57_pilot_results
+            sha256sum NEXUS_R57_PILOT.tar.gz > NEXUS_R57_PILOT_SHA256.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R57_PILOT
+          path: |
+            nexus_r57_pilot_results/
+            NEXUS_R57_PILOT.tar.gz
+            NEXUS_R57_PILOT_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
