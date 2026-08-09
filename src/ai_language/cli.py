@@ -54,6 +54,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Hide tool-call progress from stderr.",
     )
+    agent.add_argument(
+        "--trace-out",
+        metavar="FILE",
+        help="Write the latest semantic trace as JSON after each completed task.",
+    )
+    agent.add_argument(
+        "--show-coverage",
+        action="store_true",
+        help="Print the requirement coverage report after a completed task.",
+    )
+    agent.add_argument(
+        "--fail-unresolved",
+        action="store_true",
+        help="Return exit code 3 in one-shot mode if requirements remain unresolved.",
+    )
 
     gen = subparsers.add_parser("generate", help="Generate code from instruction source file.")
     gen.add_argument("source", help="Path to .ailang instruction file.")
@@ -107,15 +122,33 @@ def _make_agent(args: argparse.Namespace) -> CodingAgent:
     )
 
 
+def _persist_trace(agent: CodingAgent, path: str | None) -> None:
+    if not path or agent.last_trace is None:
+        return
+    trace_path = Path(path).expanduser()
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(agent.trace_json() + "\n", encoding="utf-8")
+
+
+def _after_agent_task(agent: CodingAgent, args: argparse.Namespace) -> None:
+    _persist_trace(agent, args.trace_out)
+    if args.show_coverage and agent.last_trace is not None:
+        print(agent.last_trace.render_coverage_text())
+
+
 def _run_agent(args: argparse.Namespace) -> int:
     agent = _make_agent(args)
     if args.prompt:
         print(agent.run(args.prompt))
+        _after_agent_task(agent, args)
+        if args.fail_unresolved and agent.last_trace is not None:
+            if agent.last_trace.unresolved_requirement_ids():
+                return 3
         return 0
 
     print(
         f"AI Language Agent | model={args.model} | workspace={agent.workspace.root}\n"
-        "Commands: /help, /clear, /diff, /trace, /exit"
+        "Commands: /help, /clear, /diff, /trace, /coverage, /exit"
     )
     while True:
         try:
@@ -130,10 +163,11 @@ def _run_agent(args: argparse.Namespace) -> int:
         if prompt == "/help":
             print(
                 "Describe a coding task in natural language.\n"
-                "/clear  reset model conversation context\n"
-                "/diff   show local git status/diff\n"
-                "/trace  show semantic requirement-to-action trace\n"
-                "/exit   leave the agent"
+                "/clear     reset model conversation context\n"
+                "/diff      show local git status/diff\n"
+                "/trace     show semantic requirement-to-action trace\n"
+                "/coverage  show requirement implementation/verification coverage\n"
+                "/exit      leave the agent"
             )
             continue
         if prompt == "/clear":
@@ -146,8 +180,15 @@ def _run_agent(args: argparse.Namespace) -> int:
         if prompt == "/trace":
             print(agent.trace_text())
             continue
+        if prompt == "/coverage":
+            if agent.last_trace is None:
+                print("[no semantic trace available]")
+            else:
+                print(agent.last_trace.render_coverage_text())
+            continue
         try:
             print(agent.run(prompt))
+            _after_agent_task(agent, args)
         except AgentLimitError as exc:
             print(f"Agent limit: {exc}", file=sys.stderr)
         except Exception as exc:

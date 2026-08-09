@@ -4,12 +4,13 @@
 [![Python](https://img.shields.io/pypi/pyversions/ai-language-pro)](https://pypi.org/project/ai-language-pro/)
 [![CI](https://github.com/Shtenco/ai_language/actions/workflows/ci.yml/badge.svg)](https://github.com/Shtenco/ai_language/actions/workflows/ci.yml)
 
-AI Language Pro is a Python package that contains two related but independent components:
+AI Language Pro is a Python package for repository-aware coding with explicit semantic traceability. It combines three layers:
 
 1. **`ail` — a repository-aware coding agent** that can inspect a local project, edit files, run controlled commands, and iterate through multi-step coding tasks using the OpenAI Responses API.
-2. **AI Language compiler — an experimental instruction compiler** that parses a small `.ailang` format into an intermediate semantic graph, an AST, and simple target-language output.
+2. **Semantic task and repository graphs** that normalize requirements into stable `REQ-*` identifiers, index Python files/symbols/imports/calls/tests, and record which requirements caused each mutation or validation command.
+3. **AI Language compiler — an experimental instruction compiler** that parses a small `.ailang` format into an intermediate semantic graph, an AST, and simple target-language output.
 
-The coding agent is the primary end-user feature in the `0.4.x` series. The compiler is an experimental research component and should not be confused with a production compiler or a general-purpose programming language implementation.
+Starting with `0.5.x`, the semantic graph is part of the coding-agent execution path rather than a separate demonstration. Each task can produce a machine-readable trace containing the intent graph, repository graph, change graph, impact graph, requirement coverage, and unresolved requirements. The `.ailang` compiler remains an experimental research component rather than a production general-purpose compiler.
 
 The package is implemented in Python and does not require Node.js or npm.
 
@@ -20,6 +21,7 @@ The package is implemented in Python and does not require Node.js or npm.
 - [Quick start](#quick-start)
 - [Coding agent](#coding-agent)
   - [Execution model](#execution-model)
+  - [Semantic traceability](#semantic-traceability)
   - [Available tools](#available-tools)
   - [Interactive mode](#interactive-mode)
   - [One-shot mode](#one-shot-mode)
@@ -178,6 +180,41 @@ The agent continues this cycle until the model returns a final response or the c
 
 In interactive mode, the previous Responses API response ID is retained so follow-up prompts continue the same conversation. `/clear` resets that conversation state.
 
+### Semantic traceability
+
+Before the first model call for a task, the agent builds a deterministic semantic task model. Natural-language clauses become stable requirement identifiers such as `REQ-1`, `REQ-2`, and `REQ-3`. Requirements are classified as actions, constraints, or validation requirements.
+
+For Python repositories, the repository graph performs bounded best-effort AST analysis and can include file, class, function, method, test, module-import, and call relationships. The graph is built from files visible through the workspace; secret-like paths remain excluded.
+
+Mutating tools (`write_file`, `replace_in_file`, `delete_file`) and validation commands (`run_command`) must carry the `requirement_ids` that justify the action. The resulting trace can therefore derive four related views:
+
+```text
+IntentGraph        requirement structure
+RepositoryGraph    files, Python symbols, imports and calls
+ChangeGraph        requirement -> tool event -> target
+ImpactGraph        changed files -> defined symbols -> affected tests
+```
+
+Requirement coverage distinguishes `implemented`, `addressed`, `verified`, and `unresolved` states instead of treating any model response as proof that the task is complete. Validation requirements are only considered verified after a successful mapped `run_command` event.
+
+The JSON trace schema for this release is `ai-language.semantic-trace/v2`. It intentionally stores event metadata and short result summaries, not file contents, replacement text, API keys, or credential material.
+
+Interactive inspection:
+
+```text
+/trace
+/coverage
+```
+
+One-shot export suitable for CI artifacts:
+
+```bash
+ail -y --trace-out build/ail-trace.json --show-coverage \
+  "Implement the change and run the relevant tests"
+```
+
+For workflows that want an explicit gate, `--fail-unresolved` returns exit code `3` when the derived trace still contains unresolved requirements. This is an opt-in policy because review/audit prompts may intentionally perform no mutations.
+
 ### Available tools
 
 | Tool | Purpose | Mutating |
@@ -205,7 +242,7 @@ Example session:
 
 ```text
 AI Language Agent | model=gpt-5.6 | workspace=/work/project
-Commands: /help, /clear, /diff, /exit
+Commands: /help, /clear, /diff, /trace, /coverage, /exit
 ail> inspect the parser and explain why malformed input is accepted
 ```
 
@@ -216,6 +253,8 @@ Interactive commands:
 | `/help` | Show the built-in command summary |
 | `/clear` | Reset model conversation context |
 | `/diff` | Display local Git status and unstaged diff |
+| `/trace` | Show the latest requirement-to-action semantic trace |
+| `/coverage` | Show requirement implementation/verification coverage |
 | `/exit` | Exit the session |
 | `/quit` | Alias for `/exit` |
 
@@ -228,6 +267,20 @@ ail "Run the relevant tests and explain the failure"
 ```
 
 A task that is allowed to modify files still uses the approval policy described below.
+
+Export the latest trace and print coverage:
+
+```bash
+ail -y --trace-out build/trace.json --show-coverage \
+  "Refactor the parser and run the relevant tests"
+```
+
+Fail a CI step when semantic requirements remain unresolved:
+
+```bash
+ail -y --fail-unresolved --trace-out build/trace.json \
+  "Apply the requested change and validate it"
+```
 
 ### CLI reference
 
@@ -250,6 +303,9 @@ Agent options:
 | `-y`, `--yes` | off | Automatically approve allowed local mutations and command execution |
 | `--read-only` | off | Disable write/delete/replace and command execution |
 | `--quiet-tools` | off | Suppress tool progress messages on stderr |
+| `--trace-out FILE` | none | Write the latest `semantic-trace/v2` JSON after a completed task |
+| `--show-coverage` | off | Print requirement coverage after a completed task |
+| `--fail-unresolved` | off | In one-shot mode return exit code 3 when requirements remain unresolved |
 
 Accepted reasoning values are:
 
@@ -544,6 +600,10 @@ agent = CodingAgent(
 
 report = agent.run("Review the repository architecture")
 print(report)
+print(agent.trace_text())
+print(agent.trace_json())
+if agent.last_trace is not None:
+    print(agent.last_trace.render_coverage_text())
 ```
 
 For a write-capable integration, provide an approval callback or explicitly enable `auto_approve`:
@@ -571,6 +631,7 @@ ai_language/
 │       ├── client.py      # Simple Responses API client
 │       ├── compiler.py    # Python validation/execution helpers
 │       ├── config.py      # API key and default model configuration
+│       ├── semantic_trace.py # Requirement, repository, change, impact, coverage graphs
 │       ├── ir.py          # Instruction, graph, and AST data structures
 │       └── pipeline.py    # Parser, IR construction, target code generators
 ├── tests/
@@ -650,6 +711,9 @@ AI Language Pro is beta software. Important limitations in the current implement
 - There is no transactional filesystem layer or automatic rollback after edits.
 - File editing is based on full-file writes and exact text replacement rather than a structured patch engine.
 - Interactive conversation state is maintained through the model API response chain; there is no independent persistent project-memory database.
+- Python symbol/import/call indexing is bounded best-effort static analysis; dynamic dispatch, runtime imports, generated code, and cross-language symbol resolution are not fully modeled.
+- Requirement extraction is deterministic and intentionally lightweight; complex specifications may need a future richer planning/IR layer.
+- Requirement coverage is provenance-based evidence, not a formal proof of semantic correctness.
 - Tool output is intentionally truncated at bounded sizes.
 - The `.ailang` compiler grammar and target generators are prototypes and are not production language backends.
 - Generated code should be reviewed and tested before use.
