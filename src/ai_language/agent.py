@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DEFAULT_MODEL, get_api_key
+from .semantic_trace import SemanticTrace, build_semantic_trace
 
 
 class AgentError(RuntimeError):
@@ -350,8 +351,16 @@ class Workspace:
         function = tools.get(name)
         if function is None:
             raise AgentError(f"Unknown tool: {name}")
-        return function(**arguments)
+        execution_arguments = dict(arguments)
+        execution_arguments.pop("requirement_ids", None)
+        return function(**execution_arguments)
 
+
+_REQ_IDS_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string"},
+    "description": "REQ-* identifiers from the semantic task model that justify this action.",
+}
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -412,8 +421,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {
                 "path": {"type": "string"},
                 "content": {"type": "string"},
+                "requirement_ids": _REQ_IDS_SCHEMA,
             },
-            "required": ["path", "content"],
+            "required": ["path", "content", "requirement_ids"],
             "additionalProperties": False,
         },
     },
@@ -430,8 +440,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "old_text": {"type": "string"},
                 "new_text": {"type": "string"},
                 "count": {"type": "integer", "minimum": 1},
+                "requirement_ids": _REQ_IDS_SCHEMA,
             },
-            "required": ["path", "old_text", "new_text"],
+            "required": ["path", "old_text", "new_text", "requirement_ids"],
             "additionalProperties": False,
         },
     },
@@ -441,8 +452,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": "Delete one regular file inside the workspace.",
         "parameters": {
             "type": "object",
-            "properties": {"path": {"type": "string"}},
-            "required": ["path"],
+            "properties": {
+                "path": {"type": "string"},
+                "requirement_ids": _REQ_IDS_SCHEMA,
+            },
+            "required": ["path", "requirement_ids"],
             "additionalProperties": False,
         },
     },
@@ -458,8 +472,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {
                 "command": {"type": "string"},
                 "timeout": {"type": "integer", "minimum": 1, "maximum": 600},
+                "requirement_ids": _REQ_IDS_SCHEMA,
             },
-            "required": ["command"],
+            "required": ["command", "requirement_ids"],
             "additionalProperties": False,
         },
     },
@@ -481,14 +496,18 @@ Work only inside the provided workspace using the tools. Inspect relevant files 
 For build/fix/change requests, keep working until the requested local implementation is complete or a real blocker is reached. Use the smallest coherent edits, preserve existing style and APIs unless the task requires change, and run relevant non-destructive validation after edits.
 Never request, read, print, or expose secrets, API keys, tokens, credentials, .env contents, or files outside the workspace. Never try to bypass tool restrictions. Do not use network commands unless the user explicitly asks for network work.
 Do not claim tests passed unless you actually ran them and saw a successful result.
+Use the semantic task model below as the authoritative traceability map. For every mutation or validation command, include all applicable requirement_ids. Do not invent requirement IDs.
 When finished, give a concise summary of changed files, validation performed, and any remaining issue.
+
 Workspace root: {workspace}
+
+{semantic_context}
 """
 
 
 @dataclass
 class CodingAgent:
-    """Responses API coding agent with a local tool loop."""
+    """Responses API coding agent with semantic task and repository traceability."""
 
     workspace: Workspace
     api_key: str | None = None
@@ -502,20 +521,37 @@ class CodingAgent:
 
         self._client = OpenAI(api_key=get_api_key(self.api_key))
         self._previous_response_id: str | None = None
+        self.last_trace: SemanticTrace | None = None
 
     def reset(self) -> None:
         self._previous_response_id = None
+
+    def trace_text(self) -> str:
+        if self.last_trace is None:
+            return "[no semantic trace available]"
+        return self.last_trace.render_text()
+
+    def trace_json(self) -> str:
+        if self.last_trace is None:
+            return "{}"
+        return self.last_trace.to_json()
 
     def _log(self, message: str) -> None:
         if self.tool_logger is not None:
             self.tool_logger(message)
 
     def _create_response(
-        self, input_data: Any, previous_response_id: str | None = None
+        self,
+        input_data: Any,
+        semantic_context: str,
+        previous_response_id: str | None = None,
     ) -> Any:
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "instructions": _AGENT_INSTRUCTIONS.format(workspace=self.workspace.root),
+            "instructions": _AGENT_INSTRUCTIONS.format(
+                workspace=self.workspace.root,
+                semantic_context=semantic_context,
+            ),
             "input": input_data,
             "tools": TOOL_DEFINITIONS,
         }
@@ -528,7 +564,17 @@ class CodingAgent:
     def run(self, prompt: str) -> str:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
-        response = self._create_response(prompt, self._previous_response_id)
+
+        repository_files = self.workspace.list_files(".", max_depth=5).splitlines()
+        trace = build_semantic_trace(prompt, repository_files)
+        self.last_trace = trace
+        semantic_context = trace.instruction_context()
+
+        response = self._create_response(
+            prompt,
+            semantic_context,
+            self._previous_response_id,
+        )
         max_steps = max(0, int(self.max_steps))
         steps_used = 0
 
@@ -547,11 +593,17 @@ class CodingAgent:
             tool_outputs: list[dict[str, str]] = []
             for call in calls:
                 name = call.name
+                arguments: dict[str, Any] = {}
                 try:
                     arguments = json.loads(call.arguments or "{}")
                     if not isinstance(arguments, dict):
                         raise ValueError("tool arguments must be a JSON object")
-                    preview = json.dumps(arguments, ensure_ascii=False)
+                    preview_arguments = {
+                        key: value
+                        for key, value in arguments.items()
+                        if key not in {"content", "old_text", "new_text"}
+                    }
+                    preview = json.dumps(preview_arguments, ensure_ascii=False)
                     self._log(f"→ {name} {preview[:240]}")
                     result = self.workspace.execute_tool(name, arguments)
                     first_line = result.splitlines()[0][:240] if result else "[empty]"
@@ -559,6 +611,7 @@ class CodingAgent:
                 except Exception as exc:
                     result = f"ERROR: {type(exc).__name__}: {exc}"
                     self._log(f"← {name}: {result}")
+                trace.record(name, arguments, result)
                 tool_outputs.append(
                     {
                         "type": "function_call_output",
@@ -567,7 +620,11 @@ class CodingAgent:
                     }
                 )
 
-            response = self._create_response(tool_outputs, response.id)
+            response = self._create_response(
+                tool_outputs,
+                semantic_context,
+                response.id,
+            )
             steps_used += 1
 
         raise AgentLimitError(

@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     agent.add_argument("prompt", nargs="?", help="One-shot task. Omit for interactive mode.")
     agent.add_argument("--cwd", default=".", help="Workspace root exposed to the agent.")
-    agent.add_argument("--api-key", dest="api_key", help="OpenAI API key; env is recommended.")
+    agent.add_argument("--api-key", dest="api_key", help="API key; environment is recommended.")
     agent.add_argument("--model", default=DEFAULT_MODEL, help="Responses API model.")
     agent.add_argument(
         "--reasoning",
@@ -115,7 +115,7 @@ def _run_agent(args: argparse.Namespace) -> int:
 
     print(
         f"AI Language Agent | model={args.model} | workspace={agent.workspace.root}\n"
-        "Commands: /help, /clear, /diff, /exit"
+        "Commands: /help, /clear, /diff, /trace, /exit"
     )
     while True:
         try:
@@ -132,6 +132,7 @@ def _run_agent(args: argparse.Namespace) -> int:
                 "Describe a coding task in natural language.\n"
                 "/clear  reset model conversation context\n"
                 "/diff   show local git status/diff\n"
+                "/trace  show semantic requirement-to-action trace\n"
                 "/exit   leave the agent"
             )
             continue
@@ -141,6 +142,9 @@ def _run_agent(args: argparse.Namespace) -> int:
             continue
         if prompt == "/diff":
             print(agent.workspace.git_diff())
+            continue
+        if prompt == "/trace":
+            print(agent.trace_text())
             continue
         try:
             print(agent.run(prompt))
