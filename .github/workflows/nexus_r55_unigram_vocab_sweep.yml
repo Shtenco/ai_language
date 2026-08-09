@@ -1,0 +1,46 @@
+name: NEXUS R5.5 Unigram Vocab Sweep
+on:
+  push:
+    branches: ["nexus-r55-unigram-vocab-sweep"]
+  workflow_dispatch:
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install dependencies
+        run: |
+          python -m pip install sentencepiece
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Download corpora
+        run: |
+          mkdir -p data/r55
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/train.txt -o data/r55/wiki.train.txt
+          curl -fL https://raw.githubusercontent.com/pytorch/examples/main/word_language_model/data/wikitext-2/test.txt -o data/r55/wiki.test.txt
+          curl -fL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt -o data/r55/tinyshakespeare.txt
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r55/ru_synt.train.a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r55/ru_synt.train.b.conllu
+          cat data/r55/ru_synt.train.a.conllu data/r55/ru_synt.train.b.conllu > data/r55/ru_synt.train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r55/ru_synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r55/ru_gsd.test.conllu
+      - name: Prepare balanced train
+        run: python benchmarks/prepare_r52_corpora.py --wiki-train data/r55/wiki.train.txt --synt-train data/r55/ru_synt.train.conllu --synt-test data/r55/ru_synt.test.conllu --gsd-test data/r55/ru_gsd.test.conllu --out data/r55/prepared --per-lang-bytes 5000000
+      - name: Run sweep
+        run: |
+          python benchmarks/r55_unigram_vocab_sweep.py --train data/r55/prepared/mixed_train.txt --tests data/r55/wiki.test.txt data/r55/tinyshakespeare.txt data/r55/prepared/ru_synt_test.txt data/r55/prepared/ru_gsd_shift.txt --out nexus_r55_results --seeds 3,11,23,47,73 --threads 2
+      - name: Archive
+        run: |
+          tar -czf NEXUS_R55_UNIGRAM_VOCAB_SWEEP.tar.gz nexus_r55_results
+          sha256sum NEXUS_R55_UNIGRAM_VOCAB_SWEEP.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R55_UNIGRAM_VOCAB_SWEEP
+          path: |
+            nexus_r55_results/
+            NEXUS_R55_UNIGRAM_VOCAB_SWEEP.tar.gz
+          retention-days: 30
