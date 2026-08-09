@@ -1,0 +1,93 @@
+name: NEXUS R5.9 Learned Semantic Graph
+on:
+  push:
+    branches: ["nexus-r59-learned-semantic-graph"]
+  workflow_dispatch:
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print('torch', torch.__version__)
+          PY
+      - name: Restore R5.9 source
+        run: |
+          base64 -d benchmarks/r59_learned_semantic_graph.py.gz.b64 | gzip -d > benchmarks/r59_learned_semantic_graph.py
+          python -m py_compile benchmarks/r59_learned_semantic_graph.py
+          sha256sum benchmarks/r59_learned_semantic_graph.py
+      - name: Download fixed Russian UD corpora
+        run: |
+          mkdir -p data/r59
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r59/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r59/b.conllu
+          cat data/r59/a.conllu data/r59/b.conllu > data/r59/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r59/synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r59/gsd.test.conllu
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r59/synt.test.conllu','data/r59/synt.txt'),('data/r59/gsd.test.conllu','data/r59/gsd.txt')]:
+              out=[x[9:].strip() for x in Path(src).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+              Path(dst).write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+      - name: Build disjoint train-memory-test corpus
+        env: {HF_HUB_DISABLE_TELEMETRY: '1'}
+        run: |
+          python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r59/train.conllu --out data/r59/rich
+          cat data/r59/rich/CORPUS_META.json
+      - name: Train null vs shuffled vs true learned graph
+        run: |
+          set +e
+          python benchmarks/r59_learned_semantic_graph.py \
+            --train-text data/r59/rich/ru_train.txt \
+            --train-docs data/r59/rich/ru_train_docs.jsonl \
+            --memory-docs data/r59/rich/graph_memory_docs.jsonl \
+            --tests data/r59/synt.txt data/r59/gsd.txt data/r59/rich/ru_heritage_test.txt \
+            --out nexus_r59_results \
+            --modes A_NULL,S_SHUFFLED,D_TRUE \
+            --steps 1024 --batch 8 --seed 20260810 --threads 2
+          rc=$?
+          cp data/r59/rich/CORPUS_META.json nexus_r59_results/ 2>/dev/null || true
+          cp benchmarks/r59_learned_semantic_graph.py nexus_r59_results/R59_SOURCE.py 2>/dev/null || true
+          echo $rc > nexus_r59_results/TRAIN_EXIT_CODE.txt
+          exit $rc
+      - name: Print evidence
+        if: always()
+        run: |
+          if [ -f nexus_r59_results/00_R59_RESULTS.json ]; then python - <<'PY'
+          import json
+          r=json.load(open('nexus_r59_results/00_R59_RESULTS.json',encoding='utf-8'))
+          print(json.dumps(r['protocol'],ensure_ascii=False,indent=2))
+          for m,z in r['results'].items():
+              print('\nMODE',m)
+              print('train',z['training'])
+              print('eval',{k:{'bpb':round(v['bpb'],6),'kind':round(v['kind_acc'],4),'rel':round(v['relation_acc'],4)} for k,v in z['eval'].items()})
+              if z['logic_generation'] is not None: print('logic_acc',z['logic_generation']['accuracy'],'cyber_acc',z['cyber_generation']['accuracy'])
+          PY
+          fi
+          if [ -f nexus_r59_results/01_RAW_GENERATIONS.txt ]; then cat nexus_r59_results/01_RAW_GENERATIONS.txt; fi
+      - name: Archive evidence
+        if: always()
+        run: |
+          if [ -d nexus_r59_results ]; then
+            tar -czf NEXUS_R59_LEARNED_SEMANTIC_GRAPH.tar.gz nexus_r59_results
+            sha256sum NEXUS_R59_LEARNED_SEMANTIC_GRAPH.tar.gz > NEXUS_R59_SHA256.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R59_LEARNED_SEMANTIC_GRAPH
+          path: |
+            nexus_r59_results/
+            NEXUS_R59_LEARNED_SEMANTIC_GRAPH.tar.gz
+            NEXUS_R59_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
