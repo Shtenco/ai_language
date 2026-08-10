@@ -1,0 +1,81 @@
+name: NEXUS R5.23 Prefix Dependence
+on:
+  push:
+    branches: ["nexus-r523-prefix-dependence"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  dependence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Restore R5.12 32K
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Build direct UD memory and tests
+        run: |
+          mkdir -p data/r523
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r523/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r523/b.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r523/synt.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r523/gsd.conllu
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          def texts(path):
+              return [x[9:].strip() for x in Path(path).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+          train=texts('data/r523/a.conllu')+texts('data/r523/b.conllu')
+          with open('data/r523/memory_docs.jsonl','w',encoding='utf-8') as f:
+              for i in range(0,len(train),10):
+                  chunk=' '.join(train[i:i+10]).strip()
+                  if len(chunk)>=140:
+                      f.write(json.dumps({'id':f'udmem-{i//10:06d}','source':'UD-SynTagRus-train','text':chunk},ensure_ascii=False)+'\n')
+          Path('data/r523/synt.txt').write_text('\n'.join(texts('data/r523/synt.conllu'))+'\n',encoding='utf-8')
+          Path('data/r523/gsd.txt').write_text('\n'.join(texts('data/r523/gsd.conllu'))+'\n',encoding='utf-8')
+          print('memory docs',sum(1 for _ in open('data/r523/memory_docs.jsonl',encoding='utf-8')))
+          PY
+      - name: Run frozen prefix dependence test
+        run: |
+          python -m py_compile benchmarks/r523_prefix_dependence.py
+          python benchmarks/r523_prefix_dependence.py \
+            --checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --memory-docs data/r523/memory_docs.jsonl \
+            --tests data/r523/synt.txt data/r523/gsd.txt \
+            --out nexus_r523_results --threads 2
+      - name: Evidence
+        if: always()
+        run: |
+          if [ -f nexus_r523_results/00_R523_RESULTS.json ]; then python - <<'PY'
+          import json
+          r=json.load(open('nexus_r523_results/00_R523_RESULTS.json',encoding='utf-8'))
+          print('protocol',r['protocol'])
+          for s,v in r['main'].items(): print(s,{m:round(x['bpb'],6) for m,x in v.items()})
+          print('logic',{m:round(x['bpb'],6) for m,x in r['logic'].items()})
+          print('cyber',{m:round(x['bpb'],6) for m,x in r['cyber'].items()})
+          print('true-shuffled',r['true_minus_shuffled_bpb'])
+          PY
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R523_PREFIX_DEPENDENCE
+          path: nexus_r523_results/
+          retention-days: 30
