@@ -19,7 +19,8 @@ KINDS=('proof','temporal','conflict','control','causal')
 SLOT_RE=re.compile(r'\[S(\d+)\]')
 
 SLOT_KEYS={
-    'proof': ['fact','goal'],
+    'proof_proved': ['fact','goal'],
+    'proof_not_proved': ['fact','goal'],
     'temporal': ['entity','relation','time','value','source'],
     'conflict_resolved': ['entity','value','source'],
     'conflict_blocked': ['entity'],
