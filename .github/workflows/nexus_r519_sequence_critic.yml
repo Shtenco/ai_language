@@ -1,0 +1,73 @@
+name: NEXUS R5.19 Sequence Critic
+on:
+  push:
+    branches: ["nexus-r519-sequence-critic"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  critic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Restore R5.12 32K
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Data
+        run: |
+          mkdir -p data/r519
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r519/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r519/b.conllu
+          cat data/r519/a.conllu data/r519/b.conllu > data/r519/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r519/synt.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r519/gsd.conllu
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r519/synt.conllu','data/r519/synt.txt'),('data/r519/gsd.conllu','data/r519/gsd.txt')]:
+              out=[x[9:].strip() for x in Path(src).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+              Path(dst).write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+      - name: Corpus
+        env: {HF_HUB_DISABLE_TELEMETRY: '1'}
+        run: python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r519/train.conllu --out data/r519/rich
+      - name: Train tiny sequence critic and rerank
+        run: |
+          python -m py_compile benchmarks/r519_sequence_critic.py
+          python benchmarks/r519_sequence_critic.py \
+            --checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --train-docs data/r519/rich/ru_train_docs.jsonl \
+            --memory-docs data/r519/rich/graph_memory_docs.jsonl \
+            --tests data/r519/synt.txt data/r519/gsd.txt data/r519/rich/ru_heritage_test.txt \
+            --out nexus_r519_results --threads 2
+      - name: Evidence
+        if: always()
+        run: |
+          if [ -f nexus_r519_results/00_R519_RESULTS.json ]; then python - <<'PY'
+          import json
+          r=json.load(open('nexus_r519_results/00_R519_RESULTS.json',encoding='utf-8'));print(r['protocol']);print(r['training']);print(r['heldout'])
+          PY
+          fi
+          cat nexus_r519_results/01_RERANKED_GENERATIONS.txt 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R519_SEQUENCE_CRITIC
+          path: nexus_r519_results/
+          retention-days: 30
