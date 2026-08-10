@@ -1,0 +1,87 @@
+name: NEXUS R5.28 Capacity Extension
+on:
+  push:
+    branches: ["nexus-r528-capacity-extension"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capacity:
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [20M, 30M]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Restore fixed Unigram4096 tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Build exact same direct-UD corpus as R5.24
+        run: |
+          mkdir -p data/r528
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r528/syn-a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r528/syn-b.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r528/syn-test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-train.conllu -o data/r528/gsd-train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r528/gsd-test.conllu
+          python - <<'PY'
+          import json,random
+          from pathlib import Path
+          def texts(p): return [x[9:].strip() for x in Path(p).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+          srcs=[('SynTagRus',texts('data/r528/syn-a.conllu')+texts('data/r528/syn-b.conllu')),('GSD',texts('data/r528/gsd-train.conllu'))]
+          docs=[]
+          for src,arr in srcs:
+              for i in range(0,len(arr),8):
+                  text=' '.join(arr[i:i+8]).strip()
+                  if len(text)>=240: docs.append({'id':f'{src}-{i//8:06d}','source':src,'text':text})
+          random.Random(20260810).shuffle(docs)
+          with open('data/r528/train_docs.jsonl','w',encoding='utf-8') as f:
+              for d in docs:f.write(json.dumps(d,ensure_ascii=False)+'\n')
+          Path('data/r528/synt.txt').write_text('\n'.join(texts('data/r528/syn-test.conllu'))+'\n',encoding='utf-8')
+          Path('data/r528/gsd.txt').write_text('\n'.join(texts('data/r528/gsd-test.conllu'))+'\n',encoding='utf-8')
+          print('docs',len(docs),'bytes',sum(len(d['text'].encode()) for d in docs))
+          PY
+      - name: Train 1024-step extended capacity
+        run: |
+          python -m py_compile benchmarks/r528_capacity_extension.py
+          OUT=nexus_r528_${{ matrix.config }}
+          python benchmarks/r528_capacity_extension.py \
+            --config ${{ matrix.config }} \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --train-docs data/r528/train_docs.jsonl \
+            --tests data/r528/synt.txt data/r528/gsd.txt \
+            --out "$OUT" --steps 1024 --batch 8 --threads 2 --lr 0.0005
+      - name: Evidence
+        if: always()
+        run: |
+          OUT=nexus_r528_${{ matrix.config }}
+          if [ -f "$OUT/00_R524_RESULTS.json" ]; then python - <<PY
+          import json
+          r=json.load(open('$OUT/00_R524_RESULTS.json',encoding='utf-8'));print(r['protocol']);print(r['training'])
+          for s,v in r['eval'].items():print(s,{k:round(x['bpb'],6) for k,x in v.items()})
+          PY
+          fi
+          cat "$OUT/01_RAW_GENERATIONS.txt" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R528_${{ matrix.config }}
+          path: nexus_r528_${{ matrix.config }}/
+          retention-days: 30
