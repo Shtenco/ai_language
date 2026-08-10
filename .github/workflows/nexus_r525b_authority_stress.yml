@@ -1,0 +1,24 @@
+name: NEXUS R5.25b Authority Stress
+on:
+  push:
+    branches: ["nexus-r525b-authority-stress"]
+  workflow_dispatch:
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compile
+        run: python -m py_compile nexus/authority_bus.py benchmarks/r525b_authority_stress.py
+      - name: Stress 100k exact cases
+        run: python benchmarks/r525b_authority_stress.py
+      - name: Evidence
+        run: cat nexus_r525b_results/00_R525B_STRESS.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R525B_AUTHORITY_STRESS
+          path: nexus_r525b_results/
+          retention-days: 30
