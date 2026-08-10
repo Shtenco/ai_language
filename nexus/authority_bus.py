@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic NEXUS Authority bus.
 
-Exact tasks are solved outside the probabilistic language cortex.  The bus
+Exact tasks are solved outside the probabilistic language cortex. The bus
 returns structured state, proof/provenance and a canonical Russian rendering.
 If no exact task grammar matches, route() returns None and the surface-language
 cortex remains sovereign over ordinary text continuation.
@@ -39,7 +39,9 @@ def solve_logic(text: str):
     rules = RULE_RE.findall(text)
     fm = FACT_RE.search(text)
     cm = CLAIM_RE.search(text)
-    if not rules or not fm or not cm:
+    # A fact/claim pair is already a complete exact problem even with zero
+    # implication rules: the claim follows iff it is the stated fact.
+    if not fm or not cm:
         return None
     fact, claim = fm.group(1), cm.group(1)
     adj = {}
