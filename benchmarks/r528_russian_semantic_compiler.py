@@ -17,19 +17,16 @@ class SemanticCompiler:
         return float(s) if '.' in s else int(s)
     def compile(self,text,session='default'):
         t=self._norm(text);low=t.lower()
-        # Feedback uses session state and deliberately owns no goal identity in text.
         m=re.search(rf'(?:получили|получено|наблюдаем|фактически|результат)\s*[:=]?\s*({NUM})\b',low)
         if m and session in self.pending_goal:
             return {'op':'feedback','goal_id':self.pending_goal[session],'observed':str(self._num(m.group(1)))}
-        # Goal declaration.
         mg=re.search(rf'(?:цель|нужно|надо)\s*[:—-]?\s*(.+?)(?:[,;]|$)',t,re.I)
-        me=re.search(rf'(?:ожида(?:ем|ется|емое значение)|критерий)\s*[:=]?\s*({NUM}|[^,;]+)',t,re.I)
+        me=re.search(rf'(?:ожидаемое\s+значение|ожидается|ожидаем|критерий)\s*[:=]?\s*({NUM}|[^,;]+)',t,re.I)
         if mg and me:
             expected=str(self._num(me.group(1))) if re.fullmatch(NUM,me.group(1).strip()) else me.group(1).strip()
             criterion='значение'
             if re.search(r'http|код|статус',low):criterion='HTTP'
             return {'op':'set_goal','session':session,'text':mg.group(1).strip(),'criterion':criterion,'expected':expected}
-        # Remember claim: quoted or compact subject-relation-value.
         mr=re.search(r'(?:запомни|сохрани|запиши)(?:,?\s*что)?\s+[«"]?([^,»"]+?)[»"]?\s+(?:имеет\s+)?(?:отношение\s+)?[«"]?([а-яёa-z_-]{2,})[»"]?\s*(?:=|равно|имеет значение|:)\s*[«"]?([^,»";]+)[»"]?',t,re.I)
         if mr:
             e,r,v=[x.strip(' «»"') for x in mr.groups()]
@@ -39,20 +36,17 @@ class SemanticCompiler:
             if mto:vt=int(float(mto.group(1).replace(',','.')))
             if ms:src=ms.group(1).strip()
             return {'op':'remember_claim','entity':e,'relation':r,'value':v,'valid_from':vf,'valid_to':vt,'source':src}
-        # Remember graph relation.
         mre=re.search(r'(?:запомни|сохрани|запиши)(?:,?\s*что)?\s+[«"]?([^,»"]+?)[»"]?\s+(причиняет|вызывает|является|часть|связан(?:а|о)?)\s+[«"]?([^,»"]+)[»"]?',t,re.I)
         if mre:
             a,rel,b=[x.strip(' «»"') for x in mre.groups()]
             mp={'причиняет':'CAUSES','вызывает':'CAUSES','является':'IS_A','часть':'PART_OF','связан':'RELATED_TO','связана':'RELATED_TO','связано':'RELATED_TO'}
             return {'op':'remember_relation','a':a,'relation':mp.get(rel.lower(),rel.upper()),'b':b,'source':'user'}
-        # Historical/current query. Quoted entity preferred, otherwise phrase before relation.
-        mq=re.search(rf'(?:какое|каков|что за|покажи)\s+(?:было\s+)?(?:значение\s+)?(?:отношения\s+)?[«"]?([а-яёa-z_-]{{2,}})[»"]?\s+(?:у|для)\s+[«"]?([^?»"]+?)[»"]?\s+(?:на|в)\s+(?:момент\s+)?({NUM})',t,re.I)
+        mq=re.search(rf'(?:какое|каков|каково|что за|покажи)\s+(?:было\s+)?(?:значение\s+)?(?:отношения\s+)?[«"]?([а-яёa-z_-]{{2,}})[»"]?\s+(?:у|для)\s+[«"]?([^?»"]+?)[»"]?\s+(?:на|в)\s+(?:момент\s+)?({NUM})',t,re.I)
         if mq:
             rel,e,tm=mq.groups();return {'op':'current','entity':e.strip(),'relation':rel.strip(),'time':int(float(tm.replace(',','.')))}
-        mq2=re.search(rf'(?:какое|каков)\s+(?:состояние|статус)\s+(?:было\s+)?(?:у|для)\s+[«"]?([^?»"]+?)[»"]?\s+(?:на|в)\s+(?:момент\s+)?({NUM})',t,re.I)
+        mq2=re.search(rf'(?:какое|каков|каково)\s+(?:состояние|статус)\s+(?:было\s+)?(?:у|для)\s+[«"]?([^?»"]+?)[»"]?\s+(?:на|в)\s+(?:момент\s+)?({NUM})',t,re.I)
         if mq2:
             e,tm=mq2.groups();rel='состояние' if 'состояние' in low else 'статус';return {'op':'current','entity':e.strip(),'relation':rel,'time':int(float(tm.replace(',','.')))}
-        # Retrieval is the safe default for factual/question text; exact execution remains read-only.
         q=t
         q=re.sub(r'^(?:что известно (?:о|про)|найди (?:в памяти )?(?:всё )?(?:о|про)|покажи (?:сведения|данные) (?:о|про))\s+','',q,flags=re.I)
         return {'op':'retrieve','query':q.strip(' ?'),'hops':2}
@@ -65,7 +59,6 @@ class SemanticCompiler:
 
 def selftest(out,n=50000):
     rng=random.Random(20260810);core=NexusCore(Path(out)/'semantic_core.sqlite');c=SemanticCompiler();ok=0;rows=[]
-    # Seed data used by natural-language query templates.
     for i in range(2500):core.remember_claim(f'объект-{i:04d}','состояние','старое',0,49,'archive',.9);core.remember_claim(f'объект-{i:04d}','состояние','новое',50,999,'sensor',.99)
     for i in range(n):
         typ=i%5
@@ -81,7 +74,7 @@ def selftest(out,n=50000):
             s=f's{i}';ir0,res0=c.execute(core,'Цель: получить HTTP 200; ожидаемое значение 200',s);obs='200' if rng.random()<.5 else '500';ir,res=c.execute(core,f'Получили {obs}',s);good=ir['op']=='feedback' and ((obs=='200' and res['status']=='stable') or (obs=='500' and res['status']=='recover'))
         ok+=int(good)
         if len(rows)<80:rows.append({'text':text if typ!=4 else f'Получили {obs}','ir':ir,'result':res,'ok':good})
-    core.close();result={'format':'nexus-r528-russian-semantic-compiler/1','n':n,'passed':ok,'accuracy':ok/n,'architecture':'deterministic Russian semantic compiler -> typed R5.26 IR; exact spans/numbers remain copied, not generated','intents':['current','retrieve','remember_claim','remember_relation','set_goal','feedback'],'default_policy':'unrecognized factual text compiles to read-only retrieve, never to a write/execute operation'};Path(out,'00_R528_RESULTS.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8');Path(out,'01_EXAMPLES.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8');return result
+    core.close();result={'format':'nexus-r528-russian-semantic-compiler/2','n':n,'passed':ok,'accuracy':ok/n,'architecture':'deterministic Russian semantic compiler -> typed R5.26 IR; exact spans/numbers remain copied, not generated','intents':['current','retrieve','remember_claim','remember_relation','set_goal','feedback'],'default_policy':'unrecognized factual text compiles to read-only retrieve, never to a write/execute operation'};Path(out,'00_R528_RESULTS.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8');Path(out,'01_EXAMPLES.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8');return result
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--selftest',action='store_true');ap.add_argument('--n',type=int,default=50000);ap.add_argument('--out',default='nexus_r528_results');ap.add_argument('--db',default='nexus_r528.sqlite');a=ap.parse_args()
