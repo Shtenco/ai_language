@@ -1,0 +1,115 @@
+name: NEXUS R5.16 Masked Deep-Diverse
+on:
+  push:
+    branches: ["nexus-r516-masked-deep-diverse"]
+  workflow_dispatch:
+
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      matrix:
+        steps: [16384, 32768]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch
+          print('torch', torch.__version__)
+          PY
+
+      - name: Download fixed Russian UD corpora
+        run: |
+          mkdir -p data/r516
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r516/ru_synt.train.a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r516/ru_synt.train.b.conllu
+          cat data/r516/ru_synt.train.a.conllu data/r516/ru_synt.train.b.conllu > data/r516/ru_synt.train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r516/ru_synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r516/ru_gsd.test.conllu
+
+      - name: Extract held-out UD text
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          def convert(src, dst):
+              out=[]
+              for line in Path(src).read_text(encoding='utf-8').splitlines():
+                  if line.startswith('# text = '):
+                      t=line[9:].strip()
+                      if t: out.append(t)
+              Path(dst).write_text('\n'.join(out)+'\n', encoding='utf-8')
+          convert('data/r516/ru_synt.test.conllu','data/r516/ru_synt_test.txt')
+          convert('data/r516/ru_gsd.test.conllu','data/r516/ru_gsd_test.txt')
+          PY
+
+      - name: Build document-disjoint diverse Russian corpus
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        run: |
+          python benchmarks/prepare_r57_russian_corpus.py \
+            --synt-train data/r516/ru_synt.train.conllu \
+            --out data/r516/rich \
+            --wiki-train-mb 20 \
+            --wiki-memory-mb 5 \
+            --wiki-test-mb 3 \
+            --heritage-train-mb 6 \
+            --heritage-test-mb 2 \
+            --synt-train-mb 4 \
+            --max-doc-kb 24
+          cat data/r516/rich/CORPUS_META.json
+
+      - name: Deep masked train ${{ matrix.steps }} steps
+        run: |
+          OUT="nexus_r516_${{ matrix.steps }}"
+          TESTS=(
+            data/r516/ru_synt_test.txt
+            data/r516/ru_gsd_test.txt
+            data/r516/rich/ru_wiki_test.txt
+            data/r516/rich/ru_heritage_test.txt
+          )
+          python benchmarks/r513_masked_iterative.py \
+            --train-text data/r516/rich/ru_train.txt \
+            --train-docs data/r516/rich/ru_train_docs.jsonl \
+            --memory-docs data/r516/rich/graph_memory_docs.jsonl \
+            --tests "${TESTS[@]}" \
+            --steps ${{ matrix.steps }} \
+            --batch 8 \
+            --seed 20260810 \
+            --out "$OUT" \
+            --threads 2
+          cp data/r516/rich/CORPUS_META.json "$OUT/"
+
+      - name: Print evidence
+        if: always()
+        run: |
+          OUT="nexus_r516_${{ matrix.steps }}"
+          if [ -f "$OUT/01_RAW_GENERATIONS.txt" ]; then sed -n '1,300p' "$OUT/01_RAW_GENERATIONS.txt"; fi
+
+      - name: Archive
+        if: always()
+        run: |
+          OUT="nexus_r516_${{ matrix.steps }}"
+          if [ -d "$OUT" ]; then
+            tar -czf "NEXUS_R516_${{ matrix.steps }}.tar.gz" "$OUT"
+            sha256sum "NEXUS_R516_${{ matrix.steps }}.tar.gz" | tee "NEXUS_R516_${{ matrix.steps }}_SHA256.txt"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R516_${{ matrix.steps }}
+          path: |
+            nexus_r516_${{ matrix.steps }}/
+            NEXUS_R516_${{ matrix.steps }}.tar.gz
+            NEXUS_R516_${{ matrix.steps }}_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
