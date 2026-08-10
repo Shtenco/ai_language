@@ -1,0 +1,32 @@
+name: NEXUS R5.26 Integrated Cognitive Loop
+on:
+  push:
+    branches: ["nexus-r526-integrated-cognitive-loop"]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Selftest 20k integrated operations
+        run: python benchmarks/r526_integrated_cognitive_loop.py --selftest --n 20000 --out nexus_r526_results
+      - name: CLI smoke
+        run: |
+          printf '%s\n' \
+            '{"op":"remember_claim","entity":"API","relation":"status","value":"готов","valid_from":0,"valid_to":999,"source":"test"}' \
+            '{"op":"current","entity":"API","relation":"status","time":1}' \
+            '{"op":"set_goal","session":"demo","text":"получить 200","criterion":"HTTP","expected":"200"}' \
+          | python benchmarks/r526_integrated_cognitive_loop.py --db nexus_r526_results/cli_demo.sqlite | tee nexus_r526_results/02_CLI_SMOKE.jsonl
+      - name: Evidence
+        run: |
+          cat nexus_r526_results/00_R526_RESULTS.json
+          sed -n '1,160p' nexus_r526_results/01_EXAMPLES.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R526_INTEGRATED_COGNITIVE_LOOP
+          path: nexus_r526_results/
+          retention-days: 30
