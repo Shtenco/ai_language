@@ -1,0 +1,95 @@
+name: NEXUS R5.19 Direct-Modern Sentence Organ
+on:
+  push:
+    branches: ["nexus-r519-direct-modern-sentence"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Download frozen R5.12 32K organ
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Direct-download modern Russian corpora
+        run: |
+          mkdir -p data/r519/gic data/r519/ud
+          curl -fL https://github.com/dialogue-evaluation/morphoRuEval-2017/raw/master/GIKRYA_texts_new.zip -o data/r519/GIKRYA.zip
+          unzip -q data/r519/GIKRYA.zip -d data/r519/gic
+          BASE=https://raw.githubusercontent.com/UniversalDependencies
+          curl -fL $BASE/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r519/ud/synt-a.conllu
+          curl -fL $BASE/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r519/ud/synt-b.conllu
+          curl -fL $BASE/UD_Russian-SynTagRus/master/ru_syntagrus-ud-dev.conllu -o data/r519/ud/synt-dev.conllu
+          curl -fL $BASE/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r519/ud/synt-test.conllu
+          curl -fL $BASE/UD_Russian-GSD/master/ru_gsd-ud-train.conllu -o data/r519/ud/gsd-train.conllu
+          curl -fL $BASE/UD_Russian-GSD/master/ru_gsd-ud-dev.conllu -o data/r519/ud/gsd-dev.conllu
+          curl -fL $BASE/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r519/ud/gsd-test.conllu
+          curl -fL $BASE/UD_Russian-Taiga/master/ru_taiga-ud-train.conllu -o data/r519/ud/taiga-train.conllu
+          curl -fL $BASE/UD_Russian-Taiga/master/ru_taiga-ud-dev.conllu -o data/r519/ud/taiga-dev.conllu
+          sha256sum data/r519/GIKRYA.zip data/r519/ud/* > data/r519/SOURCE_SHA256.txt
+      - name: Build direct document-split corpus
+        run: |
+          python benchmarks/prepare_r519_direct_modern.py \
+            --gicrya-root data/r519/gic \
+            --ud data/r519/ud/synt-a.conllu data/r519/ud/synt-b.conllu data/r519/ud/synt-dev.conllu data/r519/ud/gsd-train.conllu data/r519/ud/gsd-dev.conllu data/r519/ud/taiga-train.conllu data/r519/ud/taiga-dev.conllu \
+            --out data/r519/rich
+          cat data/r519/rich/CORPUS_META.json
+          python - <<'PY'
+          from pathlib import Path
+          def conv(src,dst):
+              x=[l[9:].strip() for l in Path(src).read_text(encoding='utf-8').splitlines() if l.startswith('# text = ')]
+              Path(dst).write_text('\n'.join(t for t in x if t)+'\n',encoding='utf-8')
+          conv('data/r519/ud/synt-test.conllu','data/r519/synt_test.txt')
+          conv('data/r519/ud/gsd-test.conllu','data/r519/gsd_test.txt')
+          PY
+      - name: Train sentence-aligned semantic organ 8192
+        run: |
+          TESTS=(data/r519/synt_test.txt data/r519/gsd_test.txt data/r519/rich/gicrya_test.txt)
+          python benchmarks/r517_sentence_curriculum.py \
+            --train-docs data/r519/rich/ru_train_docs.jsonl \
+            --memory-docs data/r519/rich/graph_memory_docs.jsonl \
+            --tests "${TESTS[@]}" \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --warm-checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --steps 8192 \
+            --out nexus_r519_results \
+            --threads 2
+          cp data/r519/rich/CORPUS_META.json nexus_r519_results/
+          cp data/r519/SOURCE_SHA256.txt nexus_r519_results/
+      - name: Evidence
+        if: always()
+        run: |
+          if [ -f nexus_r519_results/01_RAW_GENERATIONS.txt ]; then sed -n '1,380p' nexus_r519_results/01_RAW_GENERATIONS.txt; fi
+      - name: Archive
+        if: always()
+        run: |
+          if [ -d nexus_r519_results ]; then tar -czf NEXUS_R519_DIRECT_MODERN_SENTENCE.tar.gz nexus_r519_results; sha256sum NEXUS_R519_DIRECT_MODERN_SENTENCE.tar.gz > NEXUS_R519_SHA256.txt; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R519_DIRECT_MODERN_SENTENCE
+          path: |
+            nexus_r519_results/
+            NEXUS_R519_DIRECT_MODERN_SENTENCE.tar.gz
+            NEXUS_R519_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
