@@ -5,6 +5,8 @@ import json
 import re
 from pathlib import Path
 
+MIN_DOC_BYTES = 200
+
 
 def clean_text(s: str) -> str:
     s = s.replace('\r', '\n').replace('\x00', ' ')
@@ -30,6 +32,16 @@ def sha_bucket(key: str, n: int = 100) -> int:
     return int.from_bytes(hashlib.sha256(key.encode('utf-8', 'ignore')).digest()[:8], 'big') % n
 
 
+def nbytes(docs):
+    return sum(x['bytes'] for x in docs)
+
+
+def saturated(docs, limit_bytes):
+    # add_doc cannot append a legal document once < MIN_DOC_BYTES remain.
+    # Treat that bucket as full instead of scanning the entire upstream stream forever.
+    return nbytes(docs) >= max(0, limit_bytes - (MIN_DOC_BYTES - 1))
+
+
 def conllu_docs(path: str, sentences_per_doc: int = 32):
     batch = []
     for line in Path(path).read_text(encoding='utf-8').splitlines():
@@ -45,19 +57,20 @@ def conllu_docs(path: str, sentences_per_doc: int = 32):
 
 
 def add_doc(dst, source, doc_id, text, limit_bytes, max_doc_bytes=24000):
-    if sum(x['bytes'] for x in dst) >= limit_bytes:
+    used = nbytes(dst)
+    if used >= limit_bytes:
         return False
     text = cap_utf8_text(text, max_doc_bytes)
-    if len(text) < 200:
+    if len(text) < MIN_DOC_BYTES:
         return False
     raw = (text + '\n').encode('utf-8')
-    left = limit_bytes - sum(x['bytes'] for x in dst)
+    left = limit_bytes - used
     if left <= 0:
         return False
     if len(raw) > left:
         text = cap_utf8_text(text, max(0, left - 1))
         raw = (text + '\n').encode('utf-8')
-    if len(raw) < 200:
+    if len(raw) < MIN_DOC_BYTES:
         return False
     dst.append({'source': source, 'id': str(doc_id), 'text': text, 'bytes': len(raw)})
     return True
@@ -86,155 +99,64 @@ def main():
     ap.add_argument('--max-doc-kb', type=int, default=24)
     a = ap.parse_args()
 
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
-    MB = 1024 * 1024
-    max_doc = a.max_doc_kb * 1024
-
+    out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    MB = 1024 * 1024; max_doc = a.max_doc_kb * 1024
     train, memory, wiki_test, heritage_test = [], [], [], []
-    meta = {
-        'format': 'nexus-r57-russian-corpus/1',
-        'utf8_safe_document_shuffle': True,
-        'max_doc_bytes': max_doc,
-        'sources': {},
-        'errors': [],
-    }
+    meta = {'format':'nexus-r57-russian-corpus/2','utf8_safe_document_shuffle':True,'saturation_slack_bytes':MIN_DOC_BYTES-1,'max_doc_bytes':max_doc,'sources':{},'errors':[]}
 
-    # Wikimedia Wikipedia: openly licensed, diverse article-level source.
-    # Buckets are article-level and disjoint: 0-9 test, 10-24 graph memory, 25-99 LM train.
     try:
         from datasets import load_dataset
         ds = load_dataset('wikimedia/wikipedia', '20231101.ru', split='train', streaming=True)
-        try:
-            ds = ds.shuffle(seed=20260810, buffer_size=5000)
-        except Exception:
-            pass
-        lim_tr = a.wiki_train_mb * MB
-        lim_mem = a.wiki_memory_mb * MB
-        lim_te = a.wiki_test_mb * MB
-        seen = 0
+        try: ds = ds.shuffle(seed=20260810, buffer_size=5000)
+        except Exception: pass
+        lim_tr=a.wiki_train_mb*MB; lim_mem=a.wiki_memory_mb*MB; lim_te=a.wiki_test_mb*MB; seen=0
         for r in ds:
-            text = r.get('text') or ''
-            title = str(r.get('title') or '')
-            rid = str(r.get('id') or title)
-            if len(text) < 500:
-                continue
-            b = sha_bucket(rid + '\x1f' + title)
-            if b < 10:
-                add_doc(wiki_test, 'wikimedia/wikipedia:20231101.ru', rid, text, lim_te, max_doc)
-            elif b < 25:
-                add_doc(memory, 'wikimedia/wikipedia:20231101.ru', rid, text, lim_mem, max_doc)
-            else:
-                add_doc(train, 'wikimedia/wikipedia:20231101.ru', rid, text, lim_tr, max_doc)
-            seen += 1
-            if (sum(x['bytes'] for x in train) >= lim_tr and
-                sum(x['bytes'] for x in memory) >= lim_mem and
-                sum(x['bytes'] for x in wiki_test) >= lim_te):
-                break
+            text=r.get('text') or ''; title=str(r.get('title') or ''); rid=str(r.get('id') or title)
+            if len(text)<500: continue
+            b=sha_bucket(rid+'\x1f'+title)
+            if b<10: add_doc(wiki_test,'wikimedia/wikipedia:20231101.ru',rid,text,lim_te,max_doc)
+            elif b<25: add_doc(memory,'wikimedia/wikipedia:20231101.ru',rid,text,lim_mem,max_doc)
+            else: add_doc(train,'wikimedia/wikipedia:20231101.ru',rid,text,lim_tr,max_doc)
+            seen+=1
+            if saturated(train,lim_tr) and saturated(memory,lim_mem) and saturated(wiki_test,lim_te): break
         del ds
-        meta['sources']['Wikipedia_ru'] = {
-            'records_seen': seen,
-            'train_docs': sum(d['source'].startswith('wikimedia/') for d in train),
-            'train_bytes': sum(d['bytes'] for d in train if d['source'].startswith('wikimedia/')),
-            'memory_docs': len(memory),
-            'memory_bytes': sum(d['bytes'] for d in memory),
-            'test_docs': len(wiki_test),
-            'test_bytes': sum(d['bytes'] for d in wiki_test),
-        }
-    except Exception as e:
-        meta['errors'].append('Wikipedia: ' + repr(e))
+        meta['sources']['Wikipedia_ru']={'records_seen':seen,'train_docs':sum(d['source'].startswith('wikimedia/') for d in train),'train_bytes':sum(d['bytes'] for d in train if d['source'].startswith('wikimedia/')),'memory_docs':len(memory),'memory_bytes':nbytes(memory),'test_docs':len(wiki_test),'test_bytes':nbytes(wiki_test)}
+    except Exception as e: meta['errors'].append('Wikipedia: '+repr(e))
 
-    # RuHeritage: literary style, capped per document so a few giant works cannot dominate.
     try:
         from datasets import load_dataset
-        ds = load_dataset('maxzt/RuHeritage-Corpus', split='train', streaming=True)
-        try:
-            ds = ds.shuffle(seed=20260810, buffer_size=2000)
-        except Exception:
-            pass
-        lim_tr = a.heritage_train_mb * MB
-        lim_te = a.heritage_test_mb * MB
-        start_train_bytes = sum(d['bytes'] for d in train)
-        seen = 0
+        ds=load_dataset('maxzt/RuHeritage-Corpus',split='train',streaming=True)
+        try: ds=ds.shuffle(seed=20260810,buffer_size=2000)
+        except Exception: pass
+        lim_tr=a.heritage_train_mb*MB; lim_te=a.heritage_test_mb*MB; start=nbytes(train); seen=0
         for r in ds:
-            text = r.get('text') or ''
-            if len(text) < 500:
-                continue
-            key = str(r.get('author', '')) + '\x1f' + str(r.get('title', ''))
-            b = sha_bucket(key)
-            if b < 20:
-                add_doc(heritage_test, 'maxzt/RuHeritage-Corpus', key, text, lim_te, max_doc)
-            else:
-                # limit applies to this source, not total train corpus
-                source_bytes = sum(d['bytes'] for d in train) - start_train_bytes
-                if source_bytes < lim_tr:
-                    add_doc(train, 'maxzt/RuHeritage-Corpus', key, text,
-                            start_train_bytes + lim_tr, max_doc)
-            seen += 1
-            source_bytes = sum(d['bytes'] for d in train) - start_train_bytes
-            if source_bytes >= lim_tr and sum(d['bytes'] for d in heritage_test) >= lim_te:
-                break
+            text=r.get('text') or ''
+            if len(text)<500: continue
+            key=str(r.get('author',''))+'\x1f'+str(r.get('title','')); b=sha_bucket(key)
+            if b<20: add_doc(heritage_test,'maxzt/RuHeritage-Corpus',key,text,lim_te,max_doc)
+            elif nbytes(train)-start < lim_tr: add_doc(train,'maxzt/RuHeritage-Corpus',key,text,start+lim_tr,max_doc)
+            seen+=1
+            if nbytes(train)-start >= max(0,lim_tr-(MIN_DOC_BYTES-1)) and saturated(heritage_test,lim_te): break
         del ds
-        meta['sources']['RuHeritage'] = {
-            'records_seen': seen,
-            'train_docs': sum(d['source'].startswith('maxzt/') for d in train),
-            'train_bytes': sum(d['bytes'] for d in train if d['source'].startswith('maxzt/')),
-            'test_docs': len(heritage_test),
-            'test_bytes': sum(d['bytes'] for d in heritage_test),
-        }
-    except Exception as e:
-        meta['errors'].append('RuHeritage: ' + repr(e))
+        meta['sources']['RuHeritage']={'records_seen':seen,'train_docs':sum(d['source'].startswith('maxzt/') for d in train),'train_bytes':sum(d['bytes'] for d in train if d['source'].startswith('maxzt/')),'test_docs':len(heritage_test),'test_bytes':nbytes(heritage_test)}
+    except Exception as e: meta['errors'].append('RuHeritage: '+repr(e))
 
-    # SynTagRus adds contemporary, syntactically curated sentences.
-    synt_docs = []
-    synt_lim = a.synt_train_mb * MB
-    for i, text in enumerate(conllu_docs(a.synt_train)):
-        add_doc(synt_docs, 'UD_Russian-SynTagRus', i, text, synt_lim, max_doc)
-        if sum(d['bytes'] for d in synt_docs) >= synt_lim:
-            break
+    synt_docs=[]; synt_lim=a.synt_train_mb*MB
+    for i,text in enumerate(conllu_docs(a.synt_train)):
+        add_doc(synt_docs,'UD_Russian-SynTagRus',i,text,synt_lim,max_doc)
+        if saturated(synt_docs,synt_lim): break
     train.extend(synt_docs)
-    meta['sources']['SynTagRus_train'] = {
-        'train_docs': len(synt_docs),
-        'train_bytes': sum(d['bytes'] for d in synt_docs),
-    }
+    meta['sources']['SynTagRus_train']={'train_docs':len(synt_docs),'train_bytes':nbytes(synt_docs)}
 
-    # Deterministic DOCUMENT shuffle. Never cut or permute raw byte blocks.
-    train.sort(key=lambda d: hashlib.sha256((d['source'] + '\x1f' + d['id']).encode('utf-8')).digest())
-    memory.sort(key=lambda d: hashlib.sha256((d['source'] + '\x1f' + d['id']).encode('utf-8')).digest())
-    wiki_test.sort(key=lambda d: d['id'])
-    heritage_test.sort(key=lambda d: d['id'])
+    train.sort(key=lambda d:hashlib.sha256((d['source']+'\x1f'+d['id']).encode('utf-8')).digest())
+    memory.sort(key=lambda d:hashlib.sha256((d['source']+'\x1f'+d['id']).encode('utf-8')).digest())
+    wiki_test.sort(key=lambda d:d['id']); heritage_test.sort(key=lambda d:d['id'])
+    write_jsonl(out/'ru_train_docs.jsonl',train); write_jsonl(out/'graph_memory_docs.jsonl',memory); write_jsonl(out/'ru_wiki_test_docs.jsonl',wiki_test); write_jsonl(out/'ru_heritage_test_docs.jsonl',heritage_test)
+    write_text(out/'ru_train.txt',train); write_text(out/'graph_memory.txt',memory); write_text(out/'ru_wiki_test.txt',wiki_test); write_text(out/'ru_heritage_test.txt',heritage_test)
+    meta['totals']={'train_docs':len(train),'train_bytes':nbytes(train),'memory_docs':len(memory),'memory_bytes':nbytes(memory),'wiki_test_docs':len(wiki_test),'wiki_test_bytes':nbytes(wiki_test),'heritage_test_docs':len(heritage_test),'heritage_test_bytes':nbytes(heritage_test)}
+    meta['sha256']={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob('*')) if p.is_file()}
+    (out/'CORPUS_META.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding='utf-8'); print(json.dumps(meta,ensure_ascii=False,indent=2),flush=True)
+    if meta['totals']['train_bytes']<12*MB: raise RuntimeError(f"R5.7 Russian train corpus too small: {meta['totals']['train_bytes']} bytes")
+    if meta['totals']['memory_bytes']<1*MB: raise RuntimeError(f"R5.7 graph memory too small: {meta['totals']['memory_bytes']} bytes")
 
-    write_jsonl(out / 'ru_train_docs.jsonl', train)
-    write_jsonl(out / 'graph_memory_docs.jsonl', memory)
-    write_jsonl(out / 'ru_wiki_test_docs.jsonl', wiki_test)
-    write_jsonl(out / 'ru_heritage_test_docs.jsonl', heritage_test)
-    write_text(out / 'ru_train.txt', train)
-    write_text(out / 'graph_memory.txt', memory)
-    write_text(out / 'ru_wiki_test.txt', wiki_test)
-    write_text(out / 'ru_heritage_test.txt', heritage_test)
-
-    meta['totals'] = {
-        'train_docs': len(train),
-        'train_bytes': sum(d['bytes'] for d in train),
-        'memory_docs': len(memory),
-        'memory_bytes': sum(d['bytes'] for d in memory),
-        'wiki_test_docs': len(wiki_test),
-        'wiki_test_bytes': sum(d['bytes'] for d in wiki_test),
-        'heritage_test_docs': len(heritage_test),
-        'heritage_test_bytes': sum(d['bytes'] for d in heritage_test),
-    }
-    meta['sha256'] = {
-        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in sorted(out.glob('*')) if p.is_file()
-    }
-    (out / 'CORPUS_META.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
-    print(json.dumps(meta, ensure_ascii=False, indent=2), flush=True)
-
-    if meta['totals']['train_bytes'] < 12 * MB:
-        raise RuntimeError(f"R5.7 Russian train corpus too small: {meta['totals']['train_bytes']} bytes")
-    if meta['totals']['memory_bytes'] < 1 * MB:
-        raise RuntimeError(f"R5.7 graph memory too small: {meta['totals']['memory_bytes']} bytes")
-
-
-if __name__ == '__main__':
-    main()
+if __name__=='__main__': main()
