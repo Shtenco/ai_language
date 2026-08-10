@@ -1,0 +1,26 @@
+name: NEXUS R5.25 Authority Bus
+on:
+  push:
+    branches: ["nexus-r525-authority-bus"]
+  workflow_dispatch:
+jobs:
+  authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Compile exact Authority
+        run: |
+          python -m py_compile nexus/authority_bus.py benchmarks/r525_authority_selftest.py
+      - name: Run 100k exact cases and legacy-label audit
+        run: |
+          python benchmarks/r525_authority_selftest.py
+      - name: Evidence
+        run: cat nexus_r525_results/00_R525_AUTHORITY_RESULTS.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R525_AUTHORITY_BUS
+          path: nexus_r525_results/
+          retention-days: 30
