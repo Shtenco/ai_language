@@ -1,0 +1,106 @@
+name: NEXUS R5.14 Hierarchical Planner
+on:
+  push:
+    branches: ["nexus-r514-hierarchical-planner"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  planner:
+    strategy:
+      fail-fast: false
+      matrix:
+        steps: [1024, 4096]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Restore R5.12 32K checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Verify warm start
+        run: |
+          test -f warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt
+          test -f warm/nexus_r512_results/sp_unigram_4096.model
+          sha256sum warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt warm/nexus_r512_results/sp_unigram_4096.model
+          python -m py_compile benchmarks/r514_hierarchical_planner.py
+      - name: Download UD
+        run: |
+          mkdir -p data/r514
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r514/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r514/b.conllu
+          cat data/r514/a.conllu data/r514/b.conllu > data/r514/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r514/synt.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r514/gsd.conllu
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r514/synt.conllu','data/r514/synt.txt'),('data/r514/gsd.conllu','data/r514/gsd.txt')]:
+              out=[x[9:].strip() for x in Path(src).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+              Path(dst).write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+      - name: Build disjoint Russian corpus
+        env: {HF_HUB_DISABLE_TELEMETRY: '1'}
+        run: |
+          python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r514/train.conllu --out data/r514/rich
+          cat data/r514/rich/CORPUS_META.json
+      - name: Fine-tune hierarchical planner
+        run: |
+          OUT=nexus_r514_${{ matrix.steps }}
+          set +e
+          python benchmarks/r514_hierarchical_planner.py \
+            --checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --train-docs data/r514/rich/ru_train_docs.jsonl \
+            --memory-docs data/r514/rich/graph_memory_docs.jsonl \
+            --tests data/r514/synt.txt data/r514/gsd.txt data/r514/rich/ru_heritage_test.txt \
+            --out "$OUT" --steps ${{ matrix.steps }} --batch 8 --threads 2 --lr 0.0002
+          rc=$?
+          cp data/r514/rich/CORPUS_META.json "$OUT"/ 2>/dev/null || true
+          cp benchmarks/r514_hierarchical_planner.py "$OUT"/R514_SOURCE.py 2>/dev/null || true
+          echo $rc > "$OUT"/TRAIN_EXIT_CODE.txt
+          exit $rc
+      - name: Evidence
+        if: always()
+        run: |
+          OUT=nexus_r514_${{ matrix.steps }}
+          if [ -f "$OUT/00_R514_RESULTS.json" ]; then python - <<PY
+          import json
+          r=json.load(open('$OUT/00_R514_RESULTS.json',encoding='utf-8'))
+          print('protocol',r['protocol'])
+          for split,v in r['eval'].items():
+              print(split,{m:round(x['bpb'],6) for m,x in v.items()},'recall',round(v['true']['plan_recall_at8'],4))
+          PY
+          fi
+          if [ -f "$OUT/01_RAW_GENERATIONS.txt" ]; then cat "$OUT/01_RAW_GENERATIONS.txt"; fi
+      - name: Archive
+        if: always()
+        run: |
+          OUT=nexus_r514_${{ matrix.steps }}
+          if [ -d "$OUT" ]; then tar -czf NEXUS_R514_${{ matrix.steps }}.tar.gz "$OUT"; sha256sum NEXUS_R514_${{ matrix.steps }}.tar.gz > NEXUS_R514_${{ matrix.steps }}_SHA256.txt; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R514_PLANNER_${{ matrix.steps }}
+          path: |
+            nexus_r514_${{ matrix.steps }}/
+            NEXUS_R514_${{ matrix.steps }}.tar.gz
+            NEXUS_R514_${{ matrix.steps }}_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
