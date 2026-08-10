@@ -1,0 +1,32 @@
+name: NEXUS R5.28 Russian Semantic Compiler
+on:
+  push:
+    branches: ["nexus-r528-russian-semantic-compiler"]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Selftest 50k Russian semantic commands
+        run: python benchmarks/r528_russian_semantic_compiler.py --selftest --n 50000 --out nexus_r528_results
+      - name: Natural-language CLI smoke
+        run: |
+          printf '%s\n' \
+            'Запомни, что API статус = готов, с 0 по 100, источник smoke' \
+            'Каков статус у API на момент 10?' \
+            'Что известно про API?' \
+          | python benchmarks/r528_russian_semantic_compiler.py --db nexus_r528_results/cli.sqlite | tee nexus_r528_results/02_CLI_SMOKE.jsonl
+      - name: Evidence
+        run: |
+          cat nexus_r528_results/00_R528_RESULTS.json
+          sed -n '1,200p' nexus_r528_results/01_EXAMPLES.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS_R528_RUSSIAN_SEMANTIC_COMPILER
+          path: nexus_r528_results/
+          retention-days: 30
