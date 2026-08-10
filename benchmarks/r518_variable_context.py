@@ -8,9 +8,11 @@ import r57_concept_graph_language as base
 MODE='D_LOGIC_CYBER';SEED=20260810;STEPS=4096;BATCH=8
 PROMPTS=base.PROMPTS+['Россия занимает большую территорию, поэтому','Исследователь проверил данные и пришёл к выводу, что','Память помогает рассуждению, потому что','Причина отличается от простой корреляции тем, что','Для достижения цели система должна','После ошибки программа изменила своё состояние и','В книге автор рассказывает о том, как','Утром город проснулся, и на улицах']
 
-def shorten_main(ex,rng,min_ctx=4):
+def shorten_main(ex,rng,tok,min_ctx=4):
     if ex['meta'].get('kind')!='main':return ex
-    L=rng.randint(min_ctx,base.CONTEXT_TOKENS);q=dict(ex);q['ctx']=list(ex['ctx'][-L:]);q['ctx_text']=q.get('ctx_text','');return q
+    L=rng.randint(min_ctx,base.CONTEXT_TOKENS)
+    q=dict(ex);q['ctx']=list(ex['ctx'][-L:]);q['ctx_text']=tok.dec(q['ctx']).decode('utf-8','replace')
+    return q
 
 def pack_variable(examples,tok,memory):
     seqs=[];starts=[];lens=[];tb=0
@@ -37,7 +39,8 @@ def eval_variable(model,examples,tok,memory,ctx_len):
             ex=[]
             for q in examples[o:o+16]:
                 z=dict(q)
-                if z['meta'].get('kind')=='main':z['ctx']=list(z['ctx'][-ctx_len:])
+                if z['meta'].get('kind')=='main':
+                    z['ctx']=list(z['ctx'][-ctx_len:]);z['ctx_text']=tok.dec(z['ctx']).decode('utf-8','replace')
                 ex.append(z)
             x,y,m,tb=pack_variable(ex,tok,memory);logits=model(x);ce=F.cross_entropy(logits.reshape(-1,base.VOCAB),y.reshape(-1),reduction='none').view_as(y);nll+=float((ce*m).sum());bts+=tb;toks+=int(m.sum());corr+=int(((logits.argmax(-1)==y)&m).sum())
     return {'bpb':nll/max(1,bts)/math.log(2),'token_top1':corr/max(1,toks)}
@@ -78,7 +81,7 @@ def main():
         for _ in range(BATCH):
             q=sample_ex(rng,docs,tok)
             if q['meta'].get('kind')=='main':
-                q=shorten_main(q,rng);ctxhist.append(len(q['ctx']))
+                q=shorten_main(q,rng,tok);ctxhist.append(len(q['ctx']))
             ex.append(q)
         for pg in opt.param_groups:pg['lr']=2e-4*base.lr_factor(step,a.steps)
         x,y,m,tb=pack_variable(ex,tok,memory);opt.zero_grad(set_to_none=True);z=model(x);ce=F.cross_entropy(z.reshape(-1,base.VOCAB),y.reshape(-1),reduction='none').view_as(y);loss=(ce*m).sum()/tb;loss.backward();torch.nn.utils.clip_grad_norm_(model.parameters(),1.);opt.step();target_bytes+=tb;hist.append(float(loss))
@@ -90,6 +93,6 @@ def main():
     for i,p in enumerate(PROMPTS):
         for d in ('greedy','sample'):gens.append(generate(model,tok,memory,p,d,SEED+5000+i))
     logic=base.build_aux_eval(tok,'logic',88518,n=192);cyber=base.build_aux_eval(tok,'cyber',99518,n=192);lev=base.evaluate_examples(model,MODE,logic,tok,memory);cev=base.evaluate_examples(model,MODE,cyber,tok,memory);la=base.aux_generation_accuracy(model,MODE,tok,memory,'logic',12518,n=64);ca=base.aux_generation_accuracy(model,MODE,tok,memory,'cyber',22518,n=64)
-    r={'format':'nexus-r518-variable-context/1','protocol':{'warmstart':'R5.12 32768','params':base.param_count(model),'steps':a.steps,'batch':BATCH,'main_context_tokens':'uniform integer 4..48; keep suffix immediately preceding same target','left_context_padding':'NONE','batch_padding':'right of complete prefix+context+target only; causal real positions cannot attend to it','tokenizer_unk_id':tok.sp.unk_id(),'pad_id':tok.sp.pad_id()},'training':{'seconds':time.perf_counter()-t0,'target_bytes':target_bytes,'last64_npb':sum(hist[-64:])/max(1,len(hist[-64:])),'mean_main_ctx':sum(ctxhist)/max(1,len(ctxhist))},'eval_by_context_length':ev,'logic_teacher_forced':lev,'cyber_teacher_forced':cev,'logic_generation':la,'cyber_generation':ca,'generation':gens}
+    r={'format':'nexus-r518-variable-context/2','protocol':{'warmstart':'R5.12 32768','params':base.param_count(model),'steps':a.steps,'batch':BATCH,'main_context_tokens':'uniform integer 4..48; keep suffix immediately preceding same target','left_context_padding':'NONE','graph_context':'recomputed exactly from the same truncated context tokens','batch_padding':'right of complete prefix+context+target only; causal real positions cannot attend to it','tokenizer_unk_id':tok.sp.unk_id(),'pad_id':tok.sp.pad_id()},'training':{'seconds':time.perf_counter()-t0,'target_bytes':target_bytes,'last64_npb':sum(hist[-64:])/max(1,len(hist[-64:])),'mean_main_ctx':sum(ctxhist)/max(1,len(ctxhist))},'eval_by_context_length':ev,'logic_teacher_forced':lev,'cyber_teacher_forced':cev,'logic_generation':la,'cyber_generation':ca,'generation':gens}
     (out/'00_R518_RESULTS.json').write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8');(out/'01_RAW_GENERATIONS.txt').write_text('\n\n'.join(f"[{g['decode']}] ctx={g['context_tokens']} {g['prompt']}\n{g['continuation']}\nuniq={g['unique_word_ratio']:.3f} rep3={g['repeated_trigram_rate']:.3f}" for g in gens),encoding='utf-8');torch.save({'state_dict':model.state_dict(),'protocol':r['protocol']},out/'R518_VARIABLE_CONTEXT_3M.pt');print(json.dumps({'training':r['training'],'eval':ev,'logic':la['accuracy'],'cyber':ca['accuracy']},ensure_ascii=False),flush=True)
 if __name__=='__main__':main()
