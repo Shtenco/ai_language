@@ -45,7 +45,8 @@ def load_docs(path,tok):
  for line in Path(path).read_text(encoding='utf-8').splitlines():
   if not line.strip():continue
   x=json.loads(line);ids=tok.enc(x['text'])
-  if len(ids)>=TARGET+8:docs.append(ids)
+  # Every eligible document must support the full matched context range 4..48 plus 48 targets.
+  if len(ids)>=TARGET+48:docs.append(ids)
  return docs
 
 def sample(rng,docs):
@@ -92,10 +93,10 @@ def main():
  for step in range(a.steps):
   q=[sample(rng,docs) for _ in range(a.batch)];x,y,m=pack(q);opt.zero_grad(set_to_none=True);z=model(x);ce=F.cross_entropy(z.reshape(-1,VOCAB),y.reshape(-1),reduction='none').view_as(y);loss=(ce*m).sum()/max(1,int(m.sum()));loss.backward();torch.nn.utils.clip_grad_norm_(model.parameters(),1.0);fac=lr_factor(step,a.steps)
   for pg in opt.param_groups:pg['lr']=a.lr*fac
-  opt.step();hist.append(float(loss));tokens+=int(m.sum());rawbytes+=sum(len(tok.dec(t).encode('utf-8')) for _,t in q)
+  opt.step();hist.append(float(loss.detach()));tokens+=int(m.sum());rawbytes+=sum(len(tok.dec(t).encode('utf-8')) for _,t in q)
   if (step+1)%512==0:print('TRAIN',a.config,step+1,'npt',sum(hist[-128:])/128,'MB',rawbytes/1048576,'tok/s',tokens/max(1,time.perf_counter()-t0),flush=True)
  tests={Path(p).stem:tok.enc(Path(p).read_text(encoding='utf-8')) for p in a.tests};ev={name:{str(c):eval_bpb(model,ids,c,256,SEED+i*101+c) for c in (8,16,32,48)} for i,(name,ids) in enumerate(tests.items())};gens=[]
  for i,p in enumerate(PROMPTS):
   for d in ('greedy','sample'):gens.append(generate(model,tok,p,d,SEED+7000+i))
- out=Path(a.out);out.mkdir(parents=True,exist_ok=True);r={'format':'nexus-r524-capacity-sweep/1','protocol':{'config':a.config,'params':pc(model),'d_model':cfg['d'],'heads':cfg['h'],'layers':cfg['l'],'ff':cfg['f'],'tokenizer':'fixed lossless Unigram4096 from R5.12','surface_prefix':'NONE','graph_prefix':'NONE','left_padding':'NONE','batch_padding':'right of complete context+target only','context_train':'uniform 4..48','target_tokens':TARGET,'steps':a.steps,'batch':a.batch,'seed':SEED,'lr':a.lr},'training':{'seconds':time.perf_counter()-t0,'target_tokens':tokens,'target_bytes':rawbytes,'last128_npt':sum(hist[-128:])/max(1,len(hist[-128:]))},'eval':ev,'generation':gens};(out/'00_R524_RESULTS.json').write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8');(out/'01_RAW_GENERATIONS.txt').write_text('\n\n'.join(f"[{g['decode']}] {g['prompt']}\n{g['continuation']}\nuniq={g['unique_word_ratio']:.3f} rep3={g['repeated_trigram_rate']:.3f}" for g in gens),encoding='utf-8');torch.save({'state_dict':model.state_dict(),'protocol':r['protocol']},out/f'R524_{a.config}.pt');print(json.dumps({'protocol':r['protocol'],'training':r['training'],'eval':ev},ensure_ascii=False),flush=True)
+ out=Path(a.out);out.mkdir(parents=True,exist_ok=True);r={'format':'nexus-r524-capacity-sweep/2','protocol':{'config':a.config,'params':pc(model),'d_model':cfg['d'],'heads':cfg['h'],'layers':cfg['l'],'ff':cfg['f'],'tokenizer':'fixed lossless Unigram4096 from R5.12','surface_prefix':'NONE','graph_prefix':'NONE','left_padding':'NONE','batch_padding':'right of complete context+target only','eligible_docs':'at least 96 tokenizer tokens so every doc supports ctx4..48 + target48','context_train':'uniform 4..48','target_tokens':TARGET,'steps':a.steps,'batch':a.batch,'seed':SEED,'lr':a.lr},'training':{'seconds':time.perf_counter()-t0,'target_tokens':tokens,'target_bytes':rawbytes,'last128_npt':sum(hist[-128:])/max(1,len(hist[-128:]))},'eval':ev,'generation':gens};(out/'00_R524_RESULTS.json').write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8');(out/'01_RAW_GENERATIONS.txt').write_text('\n\n'.join(f"[{g['decode']}] {g['prompt']}\n{g['continuation']}\nuniq={g['unique_word_ratio']:.3f} rep3={g['repeated_trigram_rate']:.3f}" for g in gens),encoding='utf-8');torch.save({'state_dict':model.state_dict(),'protocol':r['protocol']},out/f'R524_{a.config}.pt');print(json.dumps({'protocol':r['protocol'],'training':r['training'],'eval':ev},ensure_ascii=False),flush=True)
 if __name__=='__main__':main()
