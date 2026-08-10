@@ -1,0 +1,75 @@
+name: NEXUS R5.18 Variable Context Pilot
+on:
+  push:
+    branches: ["nexus-r518-pilot"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Restore R5.12 32K
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Data
+        run: |
+          mkdir -p data/r518p
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r518p/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r518p/b.conllu
+          cat data/r518p/a.conllu data/r518p/b.conllu > data/r518p/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r518p/synt.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r518p/gsd.conllu
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r518p/synt.conllu','data/r518p/synt.txt'),('data/r518p/gsd.conllu','data/r518p/gsd.txt')]:
+              out=[x[9:].strip() for x in Path(src).read_text(encoding='utf-8').splitlines() if x.startswith('# text = ') and x[9:].strip()]
+              Path(dst).write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+      - name: Corpus
+        env: {HF_HUB_DISABLE_TELEMETRY: '1'}
+        run: python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r518p/train.conllu --out data/r518p/rich
+      - name: Fine-tune 1024 variable-context steps
+        run: |
+          python -m py_compile benchmarks/r518_variable_context.py
+          python benchmarks/r518_variable_context.py \
+            --checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --train-text data/r518p/rich/ru_train.txt \
+            --train-docs data/r518p/rich/ru_train_docs.jsonl \
+            --memory-docs data/r518p/rich/graph_memory_docs.jsonl \
+            --tests data/r518p/synt.txt data/r518p/gsd.txt data/r518p/rich/ru_heritage_test.txt \
+            --out nexus_r518_pilot --threads 2 --steps 1024
+      - name: Evidence
+        if: always()
+        run: |
+          if [ -f nexus_r518_pilot/00_R518_RESULTS.json ]; then python - <<'PY'
+          import json
+          r=json.load(open('nexus_r518_pilot/00_R518_RESULTS.json',encoding='utf-8'));print(r['protocol']);print(r['training'])
+          for s,v in r['eval_by_context_length'].items():print(s,{k:round(x['bpb'],6) for k,x in v.items()})
+          PY
+          fi
+          cat nexus_r518_pilot/01_RAW_GENERATIONS.txt 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R518_VARIABLE_CONTEXT_PILOT
+          path: nexus_r518_pilot/
+          retention-days: 30
