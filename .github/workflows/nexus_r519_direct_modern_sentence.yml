@@ -43,14 +43,14 @@ jobs:
           curl -fL $BASE/UD_Russian-GSD/master/ru_gsd-ud-train.conllu -o data/r519/ud/gsd-train.conllu
           curl -fL $BASE/UD_Russian-GSD/master/ru_gsd-ud-dev.conllu -o data/r519/ud/gsd-dev.conllu
           curl -fL $BASE/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r519/ud/gsd-test.conllu
-          curl -fL $BASE/UD_Russian-Taiga/master/ru_taiga-ud-train.conllu -o data/r519/ud/taiga-train.conllu
+          curl -fL $BASE/UD_Russian-Taiga/master/ru_taiga-ud-train-a.conllu -o data/r519/ud/taiga-train-a.conllu
           curl -fL $BASE/UD_Russian-Taiga/master/ru_taiga-ud-dev.conllu -o data/r519/ud/taiga-dev.conllu
           sha256sum data/r519/GIKRYA.zip data/r519/ud/* > data/r519/SOURCE_SHA256.txt
       - name: Build direct document-split corpus
         run: |
           python benchmarks/prepare_r519_direct_modern.py \
             --gicrya-root data/r519/gic \
-            --ud data/r519/ud/synt-a.conllu data/r519/ud/synt-b.conllu data/r519/ud/synt-dev.conllu data/r519/ud/gsd-train.conllu data/r519/ud/gsd-dev.conllu data/r519/ud/taiga-train.conllu data/r519/ud/taiga-dev.conllu \
+            --ud data/r519/ud/synt-a.conllu data/r519/ud/synt-b.conllu data/r519/ud/synt-dev.conllu data/r519/ud/gsd-train.conllu data/r519/ud/gsd-dev.conllu data/r519/ud/taiga-train-a.conllu data/r519/ud/taiga-dev.conllu \
             --out data/r519/rich
           cat data/r519/rich/CORPUS_META.json
           python - <<'PY'
