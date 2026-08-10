@@ -1,0 +1,84 @@
+name: NEXUS R5.18 Discrete Sentence Plan
+on:
+  push:
+    branches: ["nexus-r518-discrete-sentence-plan"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Download frozen R5.12 organ
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Download UD
+        run: |
+          mkdir -p data/r518
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r518/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r518/b.conllu
+          cat data/r518/a.conllu data/r518/b.conllu > data/r518/train.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-test.conllu -o data/r518/synt.test.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-GSD/master/ru_gsd-ud-test.conllu -o data/r518/gsd.test.conllu
+          python - <<'PY'
+          from pathlib import Path
+          for src,dst in [('data/r518/synt.test.conllu','data/r518/synt_test.txt'),('data/r518/gsd.test.conllu','data/r518/gsd_test.txt')]:
+              x=[l[9:].strip() for l in Path(src).read_text(encoding='utf-8').splitlines() if l.startswith('# text = ')]
+              Path(dst).write_text('\n'.join(t for t in x if t)+'\n',encoding='utf-8')
+          PY
+      - name: Build diverse corpus
+        env:
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        run: |
+          python benchmarks/prepare_r57_russian_corpus.py --synt-train data/r518/train.conllu --out data/r518/rich --wiki-train-mb 20 --wiki-memory-mb 5 --wiki-test-mb 3 --heritage-train-mb 6 --heritage-test-mb 2 --synt-train-mb 4 --max-doc-kb 24
+      - name: Train plan model
+        run: |
+          TESTS=(data/r518/synt_test.txt data/r518/gsd_test.txt data/r518/rich/ru_wiki_test.txt data/r518/rich/ru_heritage_test.txt)
+          python benchmarks/r518_discrete_sentence_plan.py \
+            --train-docs data/r518/rich/ru_train_docs.jsonl \
+            --memory-docs data/r518/rich/graph_memory_docs.jsonl \
+            --tests "${TESTS[@]}" \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --warm-checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --steps 8192 \
+            --out nexus_r518_results \
+            --threads 2
+          cp data/r518/rich/CORPUS_META.json nexus_r518_results/
+      - name: Evidence
+        if: always()
+        run: |
+          if [ -f nexus_r518_results/01_RAW_GENERATIONS.txt ]; then sed -n '1,360p' nexus_r518_results/01_RAW_GENERATIONS.txt; fi
+      - name: Archive
+        if: always()
+        run: |
+          if [ -d nexus_r518_results ]; then tar -czf NEXUS_R518_DISCRETE_SENTENCE_PLAN.tar.gz nexus_r518_results; sha256sum NEXUS_R518_DISCRETE_SENTENCE_PLAN.tar.gz > NEXUS_R518_SHA256.txt; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R518_DISCRETE_SENTENCE_PLAN
+          path: |
+            nexus_r518_results/
+            NEXUS_R518_DISCRETE_SENTENCE_PLAN.tar.gz
+            NEXUS_R518_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
