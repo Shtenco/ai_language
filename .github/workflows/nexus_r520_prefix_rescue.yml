@@ -1,0 +1,62 @@
+name: NEXUS R5.20 Prefix Rescue
+on:
+  push:
+    branches: ["nexus-r520-prefix-rescue"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  rescue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sentencepiece datasets
+          python - <<'PY' || python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          import torch; print(torch.__version__)
+          PY
+      - name: Restore R5.12 32K
+        uses: actions/download-artifact@v4
+        with:
+          name: NEXUS_R512_DEEP_LANGUAGE
+          path: warm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Shtenco/ai_language
+          run-id: 31336592447
+      - name: Data
+        run: |
+          mkdir -p data/r520
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-a.conllu -o data/r520/a.conllu
+          curl -fL https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master/ru_syntagrus-ud-train-b.conllu -o data/r520/b.conllu
+          cat data/r520/a.conllu data/r520/b.conllu > data/r520/train.conllu
+          python benchmarks/prepare_r57_fast_corpus.py --synt-train data/r520/train.conllu --out data/r520/rich
+      - name: Prefix rescue curve
+        run: |
+          python -m py_compile benchmarks/r520_prefix_rescue.py
+          python benchmarks/r520_prefix_rescue.py \
+            --checkpoint warm/nexus_r512_results/R512_DEEP_LANGUAGE_3M.pt \
+            --tokenizer-model warm/nexus_r512_results/sp_unigram_4096.model \
+            --memory-docs data/r520/rich/graph_memory_docs.jsonl \
+            --heldout data/r520/rich/ru_heritage_test.txt \
+            --out nexus_r520_results --n 64 --threads 2
+      - name: Evidence
+        if: always()
+        run: |
+          if [ -f nexus_r520_results/00_R520_RESULTS.json ]; then python - <<'PY'
+          import json
+          r=json.load(open('nexus_r520_results/00_R520_RESULTS.json',encoding='utf-8'));print(r['protocol']);print(r['aggregate'])
+          PY
+          fi
+          head -c 30000 nexus_r520_results/01_RAW_RESCUE.txt 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NEXUS_R520_PREFIX_RESCUE
+          path: nexus_r520_results/
+          retention-days: 30
