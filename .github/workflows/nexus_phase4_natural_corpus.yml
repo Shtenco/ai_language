@@ -1,0 +1,104 @@
+name: NEXUS Phase4 Natural Russian Corpus
+on:
+  push:
+    branches: [nexus-phase4-natural-corpus-20260812]
+    paths: ['.github/workflows/nexus_phase4_natural_corpus.yml']
+permissions:
+  contents: read
+jobs:
+  build-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Prepare workspace
+        run: |
+          set -euxo pipefail
+          mkdir -p corpus/raw corpus/out
+      - name: Download UD Russian SynTagRus natural text
+        run: |
+          set -euxo pipefail
+          base='https://raw.githubusercontent.com/UniversalDependencies/UD_Russian-SynTagRus/master'
+          for f in ru_syntagrus-ud-train-a.conllu ru_syntagrus-ud-train-b.conllu ru_syntagrus-ud-train-c.conllu; do
+            curl -fL --retry 4 "$base/$f" -o "corpus/raw/$f"
+          done
+          python - <<'PY'
+          from pathlib import Path
+          out=Path('corpus/out/syntagrus.txt').open('w',encoding='utf-8')
+          n=0
+          for p in sorted(Path('corpus/raw').glob('ru_syntagrus-ud-train-*.conllu')):
+              for line in p.open(encoding='utf-8'):
+                  if line.startswith('# text = '):
+                      s=line[9:].strip()
+                      if len(s)>=40:
+                          out.write(s+'\n'); n+=1
+          out.close(); print('syntagrus_sentences',n)
+          PY
+      - name: Download large Russian news corpus and materialize 300 MB natural shard
+        run: |
+          set -euxo pipefail
+          base='https://raw.githubusercontent.com/maxoodf/russian_news_corpus/master'
+          for s in aa ab ac ad ae af ag ah ai aj ak al am; do
+            curl -fL --retry 4 "$base/russian_news.txt.bz2_$s" -o "corpus/raw/news_$s"
+          done
+          cat corpus/raw/news_* > corpus/raw/russian_news.txt.bz2
+          set +o pipefail
+          bzcat corpus/raw/russian_news.txt.bz2 | head -c 300000000 > corpus/out/russian_news_300mb.txt
+          set -o pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('corpus/out/russian_news_300mb.txt')
+          b=p.read_bytes(); cut=b.rfind(b'\n')
+          if cut>0: p.write_bytes(b[:cut+1])
+          print('news_bytes',p.stat().st_size)
+          PY
+      - name: Normalize deduplicate and make frozen train-valid-test split
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,re,json
+          srcs=[Path('corpus/out/syntagrus.txt'),Path('corpus/out/russian_news_300mb.txt')]
+          writers={k:Path('corpus/out/'+k+'.txt').open('w',encoding='utf-8') for k in ['train','valid','test']}
+          seen=set(); counts={k:0 for k in writers}; chars={k:0 for k in writers}
+          source_counts={}
+          for p in srcs:
+              n=0
+              for raw in p.open(encoding='utf-8',errors='ignore'):
+                  s=re.sub(r'\s+',' ',raw).strip()
+                  if len(s)<50: continue
+                  cyr=sum('А'<=c<='я' or c in 'Ёё' for c in s)
+                  if cyr/max(1,len(s))<0.30: continue
+                  h=hashlib.sha256(s.encode()).digest()
+                  sig=h[:16]
+                  if sig in seen: continue
+                  seen.add(sig); n+=1
+                  bucket=h[16] % 100
+                  split='train' if bucket<96 else 'valid' if bucket<98 else 'test'
+                  writers[split].write(s+'\n'); counts[split]+=1; chars[split]+=len(s)+1
+              source_counts[p.name]=n
+          for f in writers.values(): f.close()
+          def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          manifest={'format':'nexus-phase4-natural-russian-v1','sources':source_counts,'lines':counts,'chars':chars,
+                    'split_rule':'sha256(normalized_line)[16] % 100: train<96, valid<98, test otherwise',
+                    'files':{k:{'sha256':sha('corpus/out/'+k+'.txt'),'bytes':Path('corpus/out/'+k+'.txt').stat().st_size} for k in counts},
+                    'provenance':[
+                      {'name':'UD_Russian-SynTagRus','repo':'UniversalDependencies/UD_Russian-SynTagRus','license':'CC BY-SA 4.0','files':'train-a/b/c'},
+                      {'name':'russian_news_corpus','repo':'maxoodf/russian_news_corpus','license_note':'preserve upstream repository licensing/provenance; research use only in this release','materialized_limit_bytes':300000000}
+                    ]}
+          Path('corpus/out/NATURAL_CORPUS_MANIFEST.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(manifest,ensure_ascii=False,indent=2))
+          PY
+      - name: Remove raw downloads
+        run: rm -rf corpus/raw corpus/out/syntagrus.txt corpus/out/russian_news_300mb.txt
+      - name: Pack corpus
+        run: |
+          tar -C corpus/out -cJf NEXUS_PHASE4_NATURAL_RU_CORPUS.tar.xz train.txt valid.txt test.txt NATURAL_CORPUS_MANIFEST.json
+          sha256sum NEXUS_PHASE4_NATURAL_RU_CORPUS.tar.xz > NEXUS_PHASE4_NATURAL_RU_CORPUS.tar.xz.sha256
+          ls -lh NEXUS_PHASE4_NATURAL_RU_CORPUS.tar.xz corpus/out/*.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexus-phase4-natural-ru-corpus
+          path: |
+            NEXUS_PHASE4_NATURAL_RU_CORPUS.tar.xz
+            NEXUS_PHASE4_NATURAL_RU_CORPUS.tar.xz.sha256
+          compression-level: 0
+          retention-days: 7
