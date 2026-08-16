@@ -1,0 +1,44 @@
+name: Build CYBER AI SMM Windows runtime on Linux
+
+on:
+  push:
+    branches: [cyber-ai-smm-runtime-ubuntu]
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build Windows embeddable runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p runtime/Lib/site-packages out
+          curl -L --retry 3 -o python-embed.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+          unzip -q python-embed.zip -d runtime
+          python -m pip install --upgrade pip
+          python -m pip install \
+            --target runtime/Lib/site-packages \
+            --platform win_amd64 \
+            --python-version 3.11 \
+            --implementation cp \
+            --only-binary=:all: \
+            customtkinter==5.2.2 vk_api==11.10.0 telethon==1.40.0 requests==2.32.4 \
+            fastapi==0.116.1 uvicorn==0.35.0 scikit-learn==1.7.1 joblib==1.5.1 \
+            numpy==2.3.2 scipy==1.16.1 pillow==11.3.0 certifi==2025.8.3
+          pth=$(ls runtime/python*._pth | head -1)
+          printf 'python311.zip\n.\nLib\\site-packages\nimport site\n' > "$pth"
+          rm -rf runtime/Lib/site-packages/__pycache__ runtime/Lib/site-packages/pip* runtime/Lib/site-packages/setuptools* || true
+          (cd runtime && zip -qr ../out/python-runtime-win-x64.zip .)
+          sha256sum out/python-runtime-win-x64.zip > out/SHA256.txt
+          ls -lh out/python-runtime-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyber-ai-smm-python-runtime-win-x64-linuxbuilt
+          path: out/*
+          compression-level: 0
+          retention-days: 2
