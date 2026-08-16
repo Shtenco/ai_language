@@ -1,0 +1,36 @@
+name: Build CYBER AI SMM portable runtime
+
+on:
+  push:
+    branches: [cyber-ai-smm-runtime-build-actual]
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install customtkinter==5.2.2 vk_api==11.10.0 telethon==1.40.0 requests==2.32.4 fastapi==0.116.1 uvicorn==0.35.0 scikit-learn==1.7.1 joblib==1.5.1 numpy==2.3.2 scipy==1.16.1 pillow==11.3.0 certifi==2025.8.3
+      - name: Package complete Python runtime
+        shell: pwsh
+        run: |
+          $py = $env:pythonLocation
+          Write-Host "pythonLocation=$py"
+          python -c "import customtkinter, sklearn, telethon, vk_api, numpy, scipy, PIL; print('runtime-imports-ok')"
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path "$py\*" -DestinationPath "out\python-runtime-win-x64.zip" -CompressionLevel Optimal
+          Get-FileHash "out\python-runtime-win-x64.zip" -Algorithm SHA256 | Format-List | Out-File "out\SHA256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyber-ai-smm-python-runtime-win-x64
+          path: out/*
+          compression-level: 0
+          retention-days: 2
