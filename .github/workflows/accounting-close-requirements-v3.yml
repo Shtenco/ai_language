@@ -1,0 +1,25 @@
+name: accounting-close-requirements-v3
+
+on:
+  pull_request:
+    paths:
+      - 'requirements/accounting_close_requirements_v3.json'
+      - 'schemas/requirement_overlay_v3.schema.json'
+      - 'sinergy_requirement_binding/overlay_v3.py'
+      - 'tests/test_requirement_overlay_v3.py'
+      - '.github/workflows/accounting-close-requirements-v3.yml'
+  workflow_dispatch:
+
+jobs:
+  requirement-overlay-v3:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip pytest jsonschema
+      - run: python -m py_compile sinergy_requirement_binding/overlay_v3.py
+      - run: python -m pytest tests/test_requirement_overlay_v3.py -q
