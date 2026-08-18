@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sinergy.system/schemas/requirement.binding/v1",
+  "title": "SINERGY RequirementBindingResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "registry_digest",
+    "requirement_refs",
+    "blockers",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "requirement.binding/v1"},
+    "status": {"enum": ["BOUND", "STALE_REGISTRY", "DRAFT_BLOCKED"]},
+    "registry_digest": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+    "requirement_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^REQ-[A-Z0-9-]+$"}
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "authority": {"const": "SEMANTIC_BINDING_ONLY"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "BOUND"}}},
+      "then": {"properties": {"blockers": {"maxItems": 0}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {"enum": ["STALE_REGISTRY", "DRAFT_BLOCKED"]}
+        }
+      },
+      "then": {"properties": {"blockers": {"minItems": 1}}}
+    }
+  ]
+}
