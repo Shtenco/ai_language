@@ -1,0 +1,80 @@
+{
+  "schema": "sinergy.requirement-overlay/v2",
+  "as_of": "2026-08-18",
+  "base_registry_schema": "sinergy.requirement-registry/v1",
+  "authority": "SEMANTIC_REQUIREMENT_OVERLAY_ONLY",
+  "requirements": [
+    {
+      "id": "REQ-PAY-004",
+      "statement": "A productive-capital funding settlement receipt must bind the exact CapitalAuthorization v2 and exact PaymentIntent economics, including project, payer, payee, asset, amount, purpose and idempotency key; a recomputed receipt hash cannot override authorization mismatch.",
+      "owner": "Shtenco/synergy_pay_system",
+      "implementation": ["src/synergy_pay/settlement_receipt_v2.py", "src/synergy_pay/authorized_settlement_receipt_v2.py"],
+      "tests": ["tests/test_settlement_receipt_v2.py", "tests/test_settlement_receipt_v2_conformance.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-PAY-005",
+      "statement": "A project-revenue SettlementReceipt v2 must bind the project, CapitalAuthorization v2 and ProjectEvidence v1, but settlement evidence alone must never claim consolidated revenue or profit recognition.",
+      "owner": "Shtenco/synergy_pay_system",
+      "implementation": ["src/synergy_pay/settlement_receipt_v2.py"],
+      "tests": ["tests/test_settlement_receipt_v2.py", "tests/test_settlement_receipt_v2_conformance.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-010",
+      "statement": "Financial OS must independently compare SettlementReceipt v2 funding economics against authoritative CapitalAuthorization v2; receipt integrity alone is insufficient for canonical causal evidence.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/settlement_receipt_v2.py"],
+      "tests": ["tests/test_settlement_receipt_v2_consumer.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-011",
+      "statement": "A settled project-revenue payment must not be posted as EXTERNAL_REVENUE without a separate Financial OS revenue-recognition decision proving external counterparty, contract/invoice, delivery/performance, dispute/refund, tax and FX/accounting-policy evidence.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/revenue_recognition_v2.py"],
+      "tests": ["tests/test_revenue_recognition_v2.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-012",
+      "statement": "The canonical external-revenue posting path must re-evaluate raw recognition evidence immediately before ledger mutation, reject deferred/rejected recognition, preserve tax/refund reserves as liabilities and bind the ReportingEntry evidence digest to RevenueRecognition v2.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/authorized_revenue_posting_v2.py", "sinergy_financial_os/revenue_posting_v2.py", "sinergy_financial_os/ledger_event_export_v1.py"],
+      "tests": ["tests/test_revenue_recognition_v2.py", "tests/test_revenue_accounting_trace_v4.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-013",
+      "statement": "EconomicCycleTrace v4 must prove the explicit causal chain Revenue Settlement -> Revenue Recognition -> Ledger Event before Accounting Snapshot, including exact digest and effective-time links; the trace itself has no posting or execution authority.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/economic_cycle_trace_v4.py"],
+      "tests": ["tests/test_revenue_accounting_trace_v4.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-CHAIN-002",
+      "statement": "Latest trust commitments must bind an explicit immutable schema-policy generation and create commitments from the latest schema for each domain by default while retaining explicit provenance verification for older generations.",
+      "owner": "Shtenco/synergy_ai_blockchain",
+      "implementation": ["sinergy_ai_blockchain/v3/schema_policy.py", "sinergy_ai_blockchain/v3/commitment.py"],
+      "tests": ["tests/test_commitment_v3_federation_policy.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-LEGACY-002",
+      "statement": "Superseded receipt, authorization, trace, trust and recognition generations must remain preserved as provenance; corrections must be introduced through explicit side-by-side generations or append-only overlays rather than destructive rewrites.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["config/schema_registry_v5.json"],
+      "tests": ["tests/test_schema_registry_v5.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    }
+  ]
+}
