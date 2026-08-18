@@ -1,0 +1,72 @@
+{
+  "schema": "sinergy.requirement-overlay/v3",
+  "as_of": "2026-08-19",
+  "base_registry_schema": "sinergy.requirement-registry/v1",
+  "base_overlay_schema": "sinergy.requirement-overlay/v2",
+  "authority": "SEMANTIC_REQUIREMENT_OVERLAY_ONLY",
+  "requirements": [
+    {
+      "id": "REQ-FIN-014",
+      "statement": "LedgerEvent v2 must be a deterministic audit projection of one valid ReportingEntry and must carry both the exact ReportingEntry digest and previous ReportingEntry digest; independent consumers must reconstruct the ReportingEntry body, validate FlowType and exact debit-credit balance, and reject digest mismatch.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/ledger_event_v2.py"],
+      "tests": ["tests/test_ledger_event_v2_accounting_close_v2.py", "tests/test_trace_v6_conformance.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-015",
+      "statement": "AccountingClose v2 must seal a strict genesis-based LedgerEvent v2 prefix with sequence exactly 1..N, continuous ReportingEntry digests, event_count equal to FinancialSnapshot sequence, and final ReportingEntry digest equal to FinancialSnapshot ledger_last_entry_digest.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/accounting_close_v2.py"],
+      "tests": ["tests/test_ledger_event_v2_accounting_close_v2.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-016",
+      "statement": "LedgerInclusionProof v2 must bind both the exact LedgerEvent v2 digest and its underlying ReportingEntry digest to one AccountingClose v2 Merkle root and must not grant posting, recognition or execution authority.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/accounting_close_v2.py"],
+      "tests": ["tests/test_ledger_event_v2_accounting_close_v2.py", "tests/test_trace_v6_conformance.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-017",
+      "statement": "EconomicCycleTrace v6 must require LedgerEvent v2, FinancialSnapshot v2, AccountingClose v2 and LedgerInclusionProof v2 as explicit final accounting phases while keeping external trust finalization non-circular and separate.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/economic_cycle_trace_v6.py"],
+      "tests": ["tests/test_economic_cycle_trace_v6.py", "tests/test_trace_v6_conformance.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-FIN-018",
+      "statement": "A fully re-hashed downstream accounting bundle must still be rejected when its LedgerEvent economics differ from the independent RevenueRecognition v2 amounts; gross debit and recognized-revenue, tax and refund-reserve credit components must remain exactly bound.",
+      "owner": "Shtenco/synergy_financial_os",
+      "implementation": ["sinergy_financial_os/economic_cycle_trace_v6.py"],
+      "tests": ["tests/test_economic_cycle_trace_v6.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-CHAIN-003",
+      "statement": "CommitmentEnvelope v5 must use an immutable v5 schema-policy profile, require latest AccountingClose/Proof/Trace generations by default, and finalize only a complete externally-finalizable Trace v6 containing AccountingClose and LedgerInclusionProof phases.",
+      "owner": "Shtenco/synergy_ai_blockchain",
+      "implementation": ["sinergy_ai_blockchain/v5/schema_policy.py", "sinergy_ai_blockchain/v5/commitment.py"],
+      "tests": ["tests/test_commitment_v5_accounting_close_trace_v6.py"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    },
+    {
+      "id": "REQ-PORTAL-003",
+      "statement": "The SINERGYCHAIN control plane must independently verify LedgerEvent v2, FinancialSnapshot v2, AccountingClose v2, LedgerInclusionProof v2, Trace v6 and Commitment v5 relationships while exposing READ_ONLY_VERIFIED/READ_ONLY_BLOCKED only and never acquiring accounting, posting, signing or execution authority.",
+      "owner": "Shtenco/synergychain",
+      "implementation": ["financial_os_v8/read_only_accounting_close_trust_bundle_v5.cjs"],
+      "tests": ["financial_os_v8/test_read_only_accounting_close_trust_v5.cjs"],
+      "implementation_status": "ADDRESSED",
+      "verification_status": "PENDING_RUNNER"
+    }
+  ]
+}
