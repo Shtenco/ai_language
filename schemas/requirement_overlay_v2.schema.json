@@ -1,0 +1,15 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://sinergy.system/schemas/sinergy.requirement-overlay/v2",
+  "title":"SINERGY RequirementOverlay v2",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema","as_of","base_registry_schema","authority","requirements"],
+  "properties":{
+    "schema":{"const":"sinergy.requirement-overlay/v2"},
+    "as_of":{"type":"string","minLength":1},
+    "base_registry_schema":{"const":"sinergy.requirement-registry/v1"},
+    "authority":{"const":"SEMANTIC_REQUIREMENT_OVERLAY_ONLY"},
+    "requirements":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["id","statement","owner","implementation","tests","implementation_status","verification_status"],"properties":{"id":{"type":"string","pattern":"^REQ-[A-Z]+-[0-9]{3}$"},"statement":{"type":"string","minLength":1},"owner":{"type":"string","pattern":"^[^/]+/[^/]+$"},"implementation":{"type":"array","items":{"type":"string","minLength":1}},"tests":{"type":"array","items":{"type":"string","minLength":1}},"implementation_status":{"type":"string","minLength":1},"verification_status":{"type":"string","minLength":1}}}}
+  }
+}
