@@ -1,0 +1,37 @@
+name: requirement-binding-v1
+
+on:
+  pull_request:
+    paths:
+      - 'sinergy_requirement_binding/**'
+      - 'schemas/requirement_binding_v1.schema.json'
+      - 'tests/test_requirement_binding.py'
+      - 'tests/test_requirement_binding_schema.py'
+      - 'docs/REQUIREMENT_BINDING_V1_20260818.md'
+      - '.github/workflows/requirement-binding-v1.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: requirement-binding-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semantic-binding:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+      - name: Compile binding package
+        run: python -m compileall -q sinergy_requirement_binding
+      - name: Run requirement binding regressions
+        run: >-
+          python -m pytest
+          tests/test_requirement_binding.py
+          tests/test_requirement_binding_schema.py
+          -q
