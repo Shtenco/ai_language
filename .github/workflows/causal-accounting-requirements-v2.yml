@@ -1,0 +1,33 @@
+name: causal-accounting-requirements-v2
+
+on:
+  pull_request:
+    paths:
+      - 'requirements/causal_accounting_requirements_v2.json'
+      - 'sinergy_requirement_binding/overlay_v2.py'
+      - 'schemas/requirement_overlay_v2.schema.json'
+      - 'tests/test_requirement_overlay_v2.py'
+      - 'docs/CAUSAL_ACCOUNTING_REQUIREMENT_OVERLAY_V2_20260818.md'
+      - '.github/workflows/causal-accounting-requirements-v2.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: causal-accounting-requirements-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semantic-overlay:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tests
+        run: python -m pip install --upgrade pip pytest jsonschema
+      - name: Compile overlay materializer
+        run: python -m py_compile sinergy_requirement_binding/overlay_v2.py
+      - name: Run overlay and binding regressions
+        run: python -m pytest tests/test_requirement_overlay_v2.py -q
