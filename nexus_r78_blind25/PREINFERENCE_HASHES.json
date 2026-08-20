@@ -1,0 +1,15 @@
+{
+  "r78_freeze_commit": "ab1f3d77ee0f0cf922ed2ed9d154f906f3ab4e7d",
+  "blind25_sha256": "3b0fa89aca603eb5cc70c3aa2c80f1e9e9660de9238be0527bce7552e9cf0bd0",
+  "route_proof_sha256": "c2bc13d75ee0ea3ac4c18df76e95290a862b16d1c2cca054fbf89fc4d37ca471",
+  "authority_proof_sha256": "f8dbac41685d1a240cb0e5cb0603d990238ebc90a6ddb450fd10fc6ac8d97112",
+  "r77_selector_sha256": "0bead192d8cfbff641a0a39995111a2bbde0d325304ebf423ff868aab700f0be",
+  "created_before_teacher_inference": true,
+  "authority_preinference_audit": {
+    "proved": 46,
+    "gold_match": 45,
+    "gold_mismatch": 1,
+    "mismatch_id": "R25_10",
+    "note": "The mismatch is preserved; Authority/policy are not modified after Blind-25 creation."
+  }
+}
