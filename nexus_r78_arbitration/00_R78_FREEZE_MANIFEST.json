@@ -1,0 +1,28 @@
+{
+  "name": "NEXUS R7.8 Top-2 Cognitive Arbitration FREEZE",
+  "freeze_stage": "BEFORE Blind-25 creation",
+  "r77_selector_sha256": "0bead192d8cfbff641a0a39995111a2bbde0d325304ebf423ff868aab700f0be",
+  "r77_selector_freeze_manifest_sha256": "4211eb66b3141d2c5c434e04115b0c38eb691ba9c5f5908a9d9f5c5e0ce525f8",
+  "authority_sha256": "2380bbe4a95e562c24ebb51fa1a763a895866ece1150be919bdf9d392d288205",
+  "policy_sha256": "014c6ea7fdce057c7e7a0162363ba73ca2cd81437ffae46a0dacbfcd4ac6010e",
+  "policy": {
+    "authority_first": true,
+    "top2_agreement_accept": true,
+    "top3_majority_on_disagreement": true,
+    "top3_no_majority": "ABSTAIN",
+    "max_teacher_calls_confirmatory": 3,
+    "teacher_outputs_used_for_ranking": false,
+    "authority_override_foreign": true
+  },
+  "exploratory_blind24_only": {
+    "status": "post-hoc diagnostic, NOT confirmatory",
+    "coverage": 0.96875,
+    "accuracy_when_answered": 0.9838709677419355,
+    "strict_accuracy": 0.953125,
+    "mean_teacher_calls": 0.734375,
+    "note": "Used to motivate freezing R7.8; may not be cited as Blind-25 evidence."
+  },
+  "native_core_expected_sha256": "a6b949fde908aa801b5c69e702e1710d32e84e1c2627d0fadd9aab71e5cb7c18",
+  "native_binder_expected_sha256": "b6ef32052ddd3144dde76a84a81c41b5d7caf7761d5658eed18ebee21bef5eb7",
+  "blind25_status": "DOES NOT EXIST AT FREEZE"
+}
