@@ -1,0 +1,35 @@
+{
+  "name": "NEXUS R7.10 Proof-First Generalization FREEZE",
+  "freeze_stage": "BEFORE Blind-27 creation and before any Blind-27 teacher inference",
+  "architecture": {
+    "formal": "Natural Language -> typed FormalIR -> Solver -> ProofObject -> independent Verifier -> option matcher",
+    "trusted_facts": "immutable typed fact graph; conclusions are derived from relations, not answer letters",
+    "foreign": "R7.7 Meta-Teacher rank + Evidence Independence Graph + max-3 evidence fusion",
+    "sovereignty": "VERIFIED proof overrides all foreign votes"
+  },
+  "source_hashes": {
+    "compiler_v2.py": "ed0be9f48c6d015718327c93b68e79016b40f826b1140c08df90a81fa321a027",
+    "evidence_fusion.py": "e2cef5a78d18ebcbd87bc7fddd5631547800b91d1b8ed11e6bccc695949008a3",
+    "option_matcher.py": "10754d12e126843aa03ac66f8ed673a2f326696022cd46c67cb0141f85baacc1",
+    "runtime_v2.py": "f18df22d9ab47daf7f6fa651aef0aeb0a2cf2f4a89c7dd030ce59d5d8eb8d638",
+    "schemas.py": "1fb85ca8c04af5d53155df81a26a826c2b7b947589391ee4c197229d9764ed4e",
+    "solver_v2.py": "fe8122546bf837506ad32a8651226cee5ad0a6633a1b7cec9f76cce5a658973c",
+    "trusted_facts.json": "3806a41a4af40fc122a5dd9c5f8516d0e015d30e9babe87869b810a2bc25220e",
+    "verifier_v2.py": "422b91072e1117fcfc64567f76be384362e4479c066155bf0f2f7735e0df6d4b"
+  },
+  "evidence_independence_graph_sha256": "95f08f957cba4f6b97c5ff9216532f03e443e361ae0635e90713e275ebf5f2b6",
+  "policy_sha256": "4c8afad742229ad9c9026bc59144e56795afa8ebfa19e43a8539d93a109a1f29",
+  "development_regression_sha256": "f58376902f91fa3bbaf4c147a103b081fc3711dc9d12b083b707e1d82060b70a",
+  "r77_selector_sha256": "0bead192d8cfbff641a0a39995111a2bbde0d325304ebf423ff868aab700f0be",
+  "thresholds": {
+    "pair_joint_error_risk": 0.18,
+    "node_score_weights": {"route": 0.72,"domain_history": 0.18,"independence": 0.1},
+    "max_foreign_calls": 3
+  },
+  "native_expected_hashes": {
+    "core": "a6b949fde908aa801b5c69e702e1710d32e84e1c2627d0fadd9aab71e5cb7c18",
+    "binder": "b6ef32052ddd3144dde76a84a81c41b5d7caf7761d5658eed18ebee21bef5eb7"
+  },
+  "blind27_status": "DOES NOT EXIST AT FREEZE",
+  "claim_boundary": "Blind27 will be an authored architecture-stress benchmark. >=98% there is not an open-domain AGI score."
+}
