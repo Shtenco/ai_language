@@ -3,8 +3,10 @@
   "freeze_stage": "BEFORE Blind-25 creation",
   "r77_selector_sha256": "0bead192d8cfbff641a0a39995111a2bbde0d325304ebf423ff868aab700f0be",
   "r77_selector_freeze_manifest_sha256": "4211eb66b3141d2c5c434e04115b0c38eb691ba9c5f5908a9d9f5c5e0ce525f8",
-  "authority_sha256": "2380bbe4a95e562c24ebb51fa1a763a895866ece1150be919bdf9d392d288205",
-  "policy_sha256": "014c6ea7fdce057c7e7a0162363ba73ca2cd81437ffae46a0dacbfcd4ac6010e",
+  "authority_local_sha256_reference": "2380bbe4a95e562c24ebb51fa1a763a895866ece1150be919bdf9d392d288205",
+  "authority_github_blob_sha": "92e6d27faa46f93f37b135449b317f4fd5f9d5a4",
+  "policy_local_sha256_reference": "014c6ea7fdce057c7e7a0162363ba73ca2cd81437ffae46a0dacbfcd4ac6010e",
+  "policy_github_blob_sha": "ed750260f913c6f533b898b48694baaf7269d587",
   "policy": {
     "authority_first": true,
     "top2_agreement_accept": true,
