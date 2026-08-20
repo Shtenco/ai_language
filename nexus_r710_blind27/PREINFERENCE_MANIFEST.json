@@ -1,0 +1,10 @@
+{
+  "freeze_commit": "fc8a32bc949947a42ab5038de0a3e55fa9921e64",
+  "blind27_sha256": "9232b50c27af89dfdf71beb53d58c438c3cd7158ea852938bd0c35112a7d6c58",
+  "formal_snapshot_sha256": "df5e9f1141bb12ee8be10a6c005ff62c182508a26240abf24fb0a3d214b12ff9",
+  "route_snapshot_sha256": "5c498d75b6295cb18a53e7ca07874dc8fd961b3d31fa9302922bf5669356c2af",
+  "formal_verified": 87,
+  "formal_coverage": 0.54375,
+  "formal_preteacher_wrong": ["R27_08"],
+  "teacher_evidence_status": "NONE OBSERVED AT MANIFEST CREATION"
+}
