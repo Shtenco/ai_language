@@ -1,0 +1,5 @@
+Trigger R7.7 Blind-24 real multi-teacher run.
+Selector freeze manifest SHA256 (local canonical package): 4211eb66b3141d2c5c434e04115b0c38eb691ba9c5f5908a9d9f5c5e0ce525f8
+Selector model SHA256: 0bead192d8cfbff641a0a39995111a2bbde0d325304ebf423ff868aab700f0be
+Precomputed full route file SHA256: c03d7e169c62fdb221a809cabecc9935419e45296512070227e6200f54fc6bcc
+Blind-24 repository content SHA256: 796ef99a3b2da3ba0b04ff702c0bf4ea867d8330faf3ce817b93df2987dc2269
