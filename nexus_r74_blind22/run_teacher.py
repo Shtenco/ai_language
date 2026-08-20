@@ -70,7 +70,7 @@ for i,it in enumerate(bench["items"]):
     })
     print(MODEL,it["id"],pred,it["answer"],rows[-1]["correct"],flush=True)
 
-valid=[x for x in rows if x["pred"] in "ABCD"]
+valid=[x for x in rows if isinstance(x.get("pred"),str) and x["pred"] in "ABCD"]
 summary={
  "model":MODEL,"model_id":MODEL_ID,"blind22_sha256":bench_sha,"n":len(rows),"valid":len(valid),
  "accuracy":sum(x["correct"] for x in rows)/len(rows),
