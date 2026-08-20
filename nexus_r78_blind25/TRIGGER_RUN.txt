@@ -1,0 +1,4 @@
+Trigger NEXUS R7.8 Blind-25 real five-teacher inference.
+Freeze commit: ab1f3d77ee0f0cf922ed2ed9d154f906f3ab4e7d
+Blind-25 SHA256: 3b0fa89aca603eb5cc70c3aa2c80f1e9e9660de9238be0527bce7552e9cf0bd0
+No benchmark, routing, Authority, or policy change in this trigger branch.
