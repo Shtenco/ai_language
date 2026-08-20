@@ -1,12 +1,16 @@
-import json, os, re, time, urllib.request, hashlib
+import json, os, re, time, urllib.request, hashlib, base64, zlib
 from pathlib import Path
 MODEL=os.environ['MODEL']; MODEL_ID=os.environ['MODEL_ID']; OUT=Path(os.environ['OUT'])
 BASE='http://127.0.0.1:11434'
 EXPECTED='692f163cd00b1d3e58b39b030897457b8f1fdd285b1d754502e414bf12a19bac'
-bpath=Path(__file__).with_name('BLIND26_FROZEN.json')
-bench=json.loads(bpath.read_text(encoding='utf-8'))
-bsha=hashlib.sha256(bpath.read_bytes()).hexdigest()
+here=Path(__file__).parent
+packed=''.join((here/f'b26_chunk_{i}.txt').read_text(encoding='utf-8') for i in range(4))
+raw=zlib.decompress(base64.b85decode(packed.encode('ascii')))
+bsha=hashlib.sha256(raw).hexdigest()
 if bsha!=EXPECTED: raise SystemExit(f'BLIND26 HASH MISMATCH {bsha} != {EXPECTED}')
+bpath=here/'BLIND26_FROZEN.json'
+bpath.write_bytes(raw)
+bench=json.loads(raw.decode('utf-8'))
 
 def post(path,obj,timeout=900):
     data=json.dumps(obj).encode(); req=urllib.request.Request(BASE+path,data=data,headers={'Content-Type':'application/json'})
@@ -35,10 +39,10 @@ for it in bench['items']:
           'stream':False,'think':False,'logprobs':True,'top_logprobs':20,
           'options':{'temperature':0,'seed':26079,'num_predict':8,'top_p':1.0}}
     t=time.time()
-    try:r=post('/api/chat',body);raw=((r.get('message') or {}).get('content') or '');pred=pick(raw);err=None
-    except Exception as e:r={};raw='';pred=None;err=repr(e)
+    try:r=post('/api/chat',body);raw_answer=((r.get('message') or {}).get('content') or '');pred=pick(raw_answer);err=None
+    except Exception as e:r={};raw_answer='';pred=None;err=repr(e)
     rows.append({'id':it['id'],'domain':it['domain'],'gold':it['answer'],'pred':pred,'correct':pred==it['answer'],
-                 'raw':raw,'option_logprobs':option_lp(r),'elapsed_wall_s':time.time()-t,'error':err,
+                 'raw':raw_answer,'option_logprobs':option_lp(r),'elapsed_wall_s':time.time()-t,'error':err,
                  'ollama_metrics':{k:r.get(k) for k in ['total_duration','load_duration','prompt_eval_count','prompt_eval_duration','eval_count','eval_duration']}})
     print(MODEL,it['id'],pred,it['answer'],rows[-1]['correct'],flush=True)
 valid=[x for x in rows if isinstance(x['pred'],str) and x['pred'] in 'ABCD']
