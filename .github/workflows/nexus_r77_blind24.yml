@@ -1,0 +1,50 @@
+name: NEXUS R7.7 Blind-24 Real Teachers
+on:
+  pull_request:
+    paths:
+      - 'nexus_r77_blind24/**'
+      - '.github/workflows/nexus_r77_blind24.yml'
+jobs:
+  teacher:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: ministral3_3b, model: 'ministral-3:3b'}
+          - {id: phi4mini_3_8b, model: 'phi4-mini:3.8b'}
+          - {id: granite33_2b, model: 'granite3.3:2b'}
+          - {id: qwen3_1_7b, model: 'qwen3:1.7b'}
+          - {id: gemma3_1b, model: 'gemma3:1b'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve > ollama.log 2>&1 &
+          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
+          ollama --version
+      - name: Pull real quantized teacher
+        run: |
+          ollama pull '${{ matrix.model }}'
+          ollama list | tee model_list.txt
+          ollama show '${{ matrix.model }}' --modelfile > model_modelfile.txt || true
+      - name: Run frozen Blind-24
+        env:
+          MODEL: ${{ matrix.model }}
+          MODEL_ID: ${{ matrix.id }}
+          OUT: blind24_${{ matrix.id }}.json
+        run: python nexus_r77_blind24/run_teacher.py
+      - name: Upload raw evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: blind24-${{ matrix.id }}
+          path: |
+            blind24_${{ matrix.id }}.json
+            model_list.txt
+            model_modelfile.txt
+            ollama.log
+            nexus_r77_blind24/BLIND24_FROZEN.json
+            nexus_r77_blind24/SELECTOR_FREEZE_MANIFEST.json
+            nexus_r77_blind24/ROUTE_PROOF.json
