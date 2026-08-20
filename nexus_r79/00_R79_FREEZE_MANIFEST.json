@@ -1,0 +1,69 @@
+{
+  "name": "NEXUS R7.9 Formal Semantic Compiler + Dual Identical-Node Fusion FREEZE",
+  "freeze_stage": "BEFORE Blind-26 and before final SAT scaling benchmark generation",
+  "architecture": {
+    "formal": "Natural Language -> FormalIR -> Solver -> ProofObject -> independent Verifier",
+    "foreign": "MetaTeacher -> identical Node0/Node1 route phases -> evidence independence -> conservative fusion",
+    "collective_search": "identical proof-search nodes -> small-world peer-state exchange"
+  },
+  "hashes": {
+    "schemas_py": "f0f7ee67cd310b79854ce728cc829dc7ec65bc740438469498e50a16fe4214f6",
+    "compiler_py": "7c2cccc89c82f9eacc24393e66bb14a6a2a68aca1bb05fa801484da746e97d8b",
+    "solver_py": "7ed6e06ba5c4ee660dda5b8000577a7527d37c481c3114659cdd20317fb78aa5",
+    "verifier_py": "a14c680f61900e8a5629d146447d5c943e3b80b1b1b0018a6b3abbf044c58196",
+    "runtime_py": "3c421d2c95ba35010381fa0221890216c37db24e350b48dc29f13f43b9c1fb27",
+    "dual_node_fusion_py": "429155d32a49980f628ee00ad0f0da25d1df19bbe865ce22b54832ea22b97598",
+    "calibrator_pkl": "5c1987903ba3c3e0d87cdb13a79d5b6ba8f1d6926b283b7c338c18592cd0abb4",
+    "calibrator_export_json": "8c4d92fa33665a3dc301d97c39fe341e63e68e0d31d44a45253639276e3d8143",
+    "r77_selector_pkl": "0bead192d8cfbff641a0a39995111a2bbde0d325304ebf423ff868aab700f0be",
+    "collective_proof_search_py": "32ae02ab62918fc6bb5d1bc23bdf6d80a4d48ac4f9983d609559988353bbad85",
+    "scaling_protocol_md": "78fcd1ec177c97d631fcc96cbe563303a5625308b1785e5af5df8575b2d5a161",
+    "policy_md": "bd95e685d1c432b5babf813ceb0c74cff2c76ffaa45392fcb4401752c79d15c5"
+  },
+  "development": {
+    "formal_old_blind24": {"verified": 35, "n": 64, "verified_accuracy": 1.0},
+    "formal_old_blind25": {"verified": 50, "n": 80, "verified_accuracy": 1.0},
+    "dualnode_leave_one_benchmark_out": {
+      "method": "leave-one-benchmark-out; pair calibrator trained only on other two blocks",
+      "blocks": [
+        {"holdout": "Blind22", "single": 0.925, "dual": 0.925, "gain_pp": 0.0},
+        {"holdout": "Blind24", "single": 0.953125, "dual": 0.984375, "gain_pp": 3.125},
+        {"holdout": "Blind25", "single": 0.9625, "dual": 0.9625, "gain_pp": 0.0}
+      ],
+      "mean_single": 0.946875,
+      "mean_dual": 0.9572916666666668,
+      "mean_gain_pp": 1.0416666666666667,
+      "worst_gain_pp": 0.0,
+      "status": "development evidence only; final claim requires Blind26 created after freeze"
+    },
+    "dual_switch_threshold": 0.12,
+    "spectral_novelty_eta": 0.2,
+    "note": "All development blocks were already disclosed before freeze; none can be used as final evidence."
+  },
+  "historical_collective_lineage": {
+    "V15": "naive/conservative five-node collective gave no gain; naive was worse",
+    "V16": "distributed weight fusion increased capacity but no significant intelligence gain; correlated errors",
+    "V17": "nonlocal small-world fusion gave statistically significant gain on frozen 2000-task proof",
+    "V17_pass1_single": 0.741,
+    "V17_pass1_fusion": 0.846,
+    "V17_pass2_single": 0.8195,
+    "V17_pass2_fusion": 0.8775
+  },
+  "collective_scaling_dev_only": {
+    "task_family": "planted satisfiable 3-SAT",
+    "development_tasks": 50,
+    "params": {"nvars": 36, "nclauses": 150, "budget_per_node": 120, "exchange_interval": 40, "noise": 0.12, "peer_adoption": 0.3},
+    "observed_dev_solve_rate": {"1": 0.58, "2": 0.88, "3": 0.96, "4": 0.98, "5": 0.98},
+    "independent_two_node_dev": 0.86,
+    "single_equal_compute_2B_dev": 0.62,
+    "subexponential_fit_dev": {"model": "e1*exp(-a*(N^beta-1))", "a": 3.91937555, "beta": 0.40630863},
+    "status": "development only; final scaling benchmark not yet generated"
+  },
+  "native_expected_hashes": {
+    "core": "a6b949fde908aa801b5c69e702e1710d32e84e1c2627d0fadd9aab71e5cb7c18",
+    "binder": "b6ef32052ddd3144dde76a84a81c41b5d7caf7761d5658eed18ebee21bef5eb7"
+  },
+  "blind26_status": "DOES NOT EXIST AT FREEZE",
+  "final_sat_scaling_status": "DOES NOT EXIST AT FREEZE",
+  "claim_boundary": "Final claims require new post-freeze Blind-26 and new post-freeze SAT scaling benchmark. Development gains are not final evidence."
+}
