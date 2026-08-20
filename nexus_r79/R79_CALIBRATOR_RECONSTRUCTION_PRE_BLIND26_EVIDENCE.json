@@ -1,0 +1,21 @@
+{
+  "name": "R7.9 calibrator reconstruction — frozen before reading Blind-26 teacher evidence",
+  "reason": "Canonical calibrator source/model hashes exist in the original R7.9 freeze manifest, but the byte-for-byte calibrator file is not present in the current active runtime. This reconstruction is therefore explicitly non-canonical.",
+  "training_sources": ["REAL Blind-22", "REAL Blind-24", "REAL Blind-25"],
+  "blind26_teacher_evidence_read_at_freeze": false,
+  "fixed_policy": {
+    "dual_switch_threshold": 0.12,
+    "spectral_novelty_eta": 0.20,
+    "node0": "R7.7 ranked teacher #1",
+    "node1": "R7.7 ranked teacher #2",
+    "agreement": "accept common valid answer",
+    "disagreement": "switch to node1 only if calibrated correctness plus novelty exceeds node0 by fixed threshold"
+  },
+  "hashes": {
+    "rebuild_script_sha256": "f7cb39f7f1f15092b3f73601b044a5427fd55750c5a3b55e16dc1906abb18e5e",
+    "reconstructed_model_sha256": "921efbfaa9c675eb847f68949680209b2b30d786441ff06128ca10b931ca38d8",
+    "calibrator_export_sha256": "8012bedadef7fef356025af7dc162934535013666a7e61c3634b6d4992a1567a",
+    "training_rows_sha256": "509645399d95cf907c4bfdf2803ea43f6e8aa3eb78b5c18e7483e63259a799bb"
+  },
+  "claim_boundary": "Final Blind-26 report must show canonical R7.9 single separately from reconstructed dual fusion. The reconstructed dual score cannot be mislabeled as a byte-identical reproduction of the original canonical calibrator."
+}
