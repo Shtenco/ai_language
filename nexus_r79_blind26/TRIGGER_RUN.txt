@@ -1,0 +1,1 @@
+Run frozen Blind-26 real five-teacher inference. Do not modify benchmark, freeze manifest, runner, or routing/proof snapshots in this PR.
