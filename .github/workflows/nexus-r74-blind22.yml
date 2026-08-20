@@ -1,0 +1,65 @@
+name: NEXUS R7.4 Blind-22 Real Teachers
+
+on:
+  pull_request:
+    paths:
+      - 'nexus_r74_blind22/**'
+      - '.github/workflows/nexus-r74-blind22.yml'
+  workflow_dispatch:
+
+jobs:
+  teacher:
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: ministral3_3b
+            model: ministral-3:3b
+          - id: phi4mini_3_8b
+            model: phi4-mini:3.8b
+          - id: qwen3_1_7b
+            model: qwen3:1.7b
+          - id: gemma3_1b
+            model: gemma3:1b
+          - id: granite33_2b
+            model: granite3.3:2b
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve > ollama.log 2>&1 &
+          for i in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null && break
+            sleep 1
+          done
+          ollama --version
+      - name: Pull real quantized teacher
+        run: |
+          ollama pull '${{ matrix.model }}'
+          ollama list | tee model_list.txt
+          ollama show '${{ matrix.model }}' --modelfile > model_modelfile.txt || true
+          find ~/.ollama/models/blobs -type f -maxdepth 1 -print0 | xargs -0 sha256sum > model_blob_sha256.txt || true
+          du -h ~/.ollama/models/blobs/* > model_blob_sizes.txt || true
+      - name: Run frozen Blind-22
+        env:
+          MODEL: ${{ matrix.model }}
+          MODEL_ID: ${{ matrix.id }}
+          OUT: blind22_${{ matrix.id }}.json
+        run: python nexus_r74_blind22/run_teacher.py
+      - name: Upload raw evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: blind22-${{ matrix.id }}
+          path: |
+            blind22_${{ matrix.id }}.json
+            model_list.txt
+            model_modelfile.txt
+            model_blob_sha256.txt
+            model_blob_sizes.txt
+            ollama.log
+            nexus_r74_blind22/BLIND22_FROZEN.json
+          retention-days: 30
