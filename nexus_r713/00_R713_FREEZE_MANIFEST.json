@@ -1,0 +1,43 @@
+{
+  "name": "NEXUS R7.13 Cybernetic Hypothesis-Test Layer",
+  "created": "2026-08-23",
+  "lineage": "R7.12 GraphBoost + user infograph.py mechanics as deterministic exploration layer",
+  "scientific_role_of_bip39": "reproducible hypothesis diversification/routing only; NOT evidence and NOT a factual oracle",
+  "mechanics": {
+    "entropy": "SHA256(question or feedback-state)",
+    "bip39": "256-bit entropy + 8-bit checksum -> 24 canonical 11-bit indices",
+    "rows": "4 hypotheses A/B/C/D",
+    "columns": "6 pairwise tests AB/AC/AD/BC/BD/CD",
+    "feedback": "H_t + test verdict + margin -> next SHA/BIP39 state",
+    "max_cycles": 3
+  },
+  "training": {
+    "disclosed_blocks": ["B22","B24","B25","B26","B27","B28"],
+    "n": 624,
+    "base_trees": 120,
+    "pairwise_test_trees": 140,
+    "switch_prob": 0.57,
+    "epsilon": 0.04
+  },
+  "development_oof": {
+    "r712_start": 0.9262820512820513,
+    "pair_no_bip": 0.9326923076923077,
+    "pair_bip": 0.9375
+  },
+  "blind29_status": "DOES NOT EXIST AT FREEZE",
+  "freeze_zip_sha256": "387271f8e8ea55e71e20129401a0c3b3ba82f685834d94bc21526938e2cecfa8",
+  "local_manifest_sha256": "6e84b46db498edcdfcc25ef6fcadd52784f6e2abdbe0f5660e7b115eeb806ce5",
+  "sha256": {
+    "source/bip39_cyber_layer.py": "31506866f26a73dcfac57d88bf468b130982871f217fdba1c174cb328fc0539d",
+    "source/pairwise_cyber_training.py": "c138d56545c7fd87e3dddd1700b2403bf531ff68ce30b4dbcb6ac067a6eb6621",
+    "source/runtime_r713.py": "2966e797fe976757aeda804b84017abf369946e24de34793cafa242976831e6e",
+    "models/r713_base_graphboost.cbm": "9bfbee40df23b6c28571f24e7ec151b174bc3b29f722d3ed7a377ba836c9e205",
+    "models/r713_pairwise_test.cbm": "1e76d12017268d27d9f7ffc662816ae892b07d3689b31901d0dc796fde578229",
+    "models/domain_router.joblib": "fe6630909da41ebaea8e76371f18d4e2b2bc869875eba5500844587611f3569b",
+    "models/reliability.npy": "6b1f51ce1ad6083caf1eb3cfec0398ee011c92a4adbcfe657e33acb82808a9e5",
+    "models/independence.npy": "00225effd1a08b78d95d0937fe384244c03088c0ea536f8e1470bbea49052fd1",
+    "models/centrality.npy": "1d02979808226a1ade234112a6d84713ebc9970741d718ba5fb553a304907ca3",
+    "models/adjacency.npy": "180f2aeff9f833480ed70ca57f73bb1cf794c59c31dc2f1e61d34115382fee58",
+    "provenance/infograph_original.py": "092898d8a1bef9d3c6dd6c3b9289076f62666bfeb453f9abeb8f4b249c205d25"
+  }
+}
