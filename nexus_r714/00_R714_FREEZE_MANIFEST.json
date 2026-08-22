@@ -1,0 +1,37 @@
+{
+  "name": "NEXUS R7.14 MULTILINGUAL MORPHOLEX",
+  "date": "2026-08-23",
+  "parent": "NEXUS R7.13 Cyber Hypothesis-Test",
+  "blind30_status": "DOES NOT EXIST AT FREEZE",
+  "top10_definition": "Ethnologue 28th edition total-speaker ranking",
+  "rule_priority": "deterministic rule > distilled learner",
+  "direct_answer_override": false,
+  "morpholex_total_feature_dim": 72,
+  "selftest": {"correct":150,"n":150,"accuracy":1.0},
+  "language_detection_curated_accuracy": 1.0,
+  "distiller_cv5_consistency": 0.9645022975925492,
+  "downstream_disclosed_oof": {
+    "n": 624,
+    "weighted_r713": 0.9375,
+    "weighted_direct_r714": 0.9342948717948718,
+    "direct_integration_corrections": 0,
+    "direct_integration_regressions": 2,
+    "decision": "DISABLE_DIRECT_MORPHOLEX_ANSWER_OVERRIDE",
+    "safe_role": "canonicalization + typed MorphoLexIR + test constraints + delta_language only"
+  },
+  "frozen_parameters": {
+    "r713_switch_prob": 0.57,
+    "r713_max_cycles": 3,
+    "r713_bip39_epsilon": 0.04,
+    "morpholex_override": false
+  },
+  "sha256": {
+    "source/morpholex_layer.py": "b0557657ad21a3eab59ee4388a3003a3391895cfa537dc4d06cf674d8b188d40",
+    "source/oof_fold.py": "4b5dc231525d797b0b855aa1757f048dd5005f4db559c969e2ec8da02a775114",
+    "source/runtime_r714.py": "72f3a4939bba3f65bbe643ce3bb653469622f5d60a614e093e1b307abcae7313",
+    "source/morpholex_engine.py": "6e2f77eafd09a6a1fea5da1560c4ba5f0ef0025374bae7b8be0aac57f08d6255",
+    "source/train_distiller.py": "7d509819e05f27c2229ee49e5d9a61ffaaed963be0da2cc66468b10794ba68e9",
+    "models/distiller_meta.json": "23744a8d2a1e534656e1380e85b037e6c89c8e6447b64e3dd65b1309aea5d937",
+    "models/morpholex_distiller.joblib": "13c66f9faab8b5459687fa1a65b9987f6cfd976ec3d2f969b3beb0ea651144cc"
+  }
+}
