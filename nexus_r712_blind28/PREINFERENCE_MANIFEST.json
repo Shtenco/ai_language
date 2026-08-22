@@ -1,0 +1,9 @@
+{
+  "r712_freeze_commit": "d628755a8a458a914dbc23b783cc911efadfe3d5",
+  "r712_freeze_manifest_sha256": "0e20293264ae8277522bb2072beceecb32ec77d9978358694c1f9525a342192d",
+  "blind28_sha256": "25ae7885469162214fa8235b06ef2a71e87890f7811bc3dd58538ffb87a888b6",
+  "formal_preinference_sha256": "fb0843bdaff303c377aa8b5c0f879b420747790f731b89e2dbb9565a64c8e3da",
+  "route_preinference_sha256": "1b35ca5af3c7feafb36fed87d0dd2f73268bdf32d8564ac8b5a07f38ef3b5a7e",
+  "teacher_protocol": {"temperature": 0, "seed": 280712, "think": false, "max_tokens": 8},
+  "status": "FROZEN BEFORE ANY BLIND28 TEACHER INFERENCE"
+}
