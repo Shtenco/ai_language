@@ -1,0 +1,27 @@
+{
+  "name": "NEXUS R7.12 GRAPHBOOST FREEZE",
+  "freeze_stage": "BEFORE Blind28",
+  "blind28_status": "DOES NOT EXIST AT FREEZE",
+  "mechanics": {
+    "formal_sovereignty": true,
+    "pre_response_route_k": 2,
+    "nexus_as_functional_baseline": true,
+    "gradient_boost_residual": true,
+    "gate_delta_logit": 0.25,
+    "foreign_calls_unknown": 2
+  },
+  "hashes": {
+    "dev/DEVELOPMENT_SUMMARY.json": "6fe2091a2a523e5b27e1f3800fa1784efbeae7af4a7b6ac1702272e81da31794",
+    "dev/R712_DEV_CV_pre_top2.json": "8773ed5aeff2052a00b33feb59b979ce42ab14a323fea2f3b7c4c09ecb54956f",
+    "dev/R712_TOP2_OOF.csv": "5ed62d4c50643db6261606c437829b4b3eccf3c8ee64566bab4268ad5065c5a1",
+    "dev/TRAINING_DISCLOSED_22_27.csv": "dd1f81d0f386b22a80629f70f88a803401b90d3e2c480273538d4efffd952925",
+    "models/adjacency.npy": "6a393e6ad4a21028816061640f7ce57b1058090db63d7a16df8e1a9680c68b26",
+    "models/centrality.npy": "7f894c04e12812e4b7502dfe5d375d27dfd5ac127c6184c9b8dfa9fcdfaf7fb6",
+    "models/domain_router.joblib": "529f62c3901f8189435d3f5e1b44b02d33632f0a07dd3863a4fd5da132f3b513",
+    "models/independence.npy": "89ecf6e28b6a8f7131b12b429f38fb6c8c54da551b1d1a79f0cd25478f1fddae",
+    "models/reliability.npy": "859e709351fb4c7ef135514c946d08e78097afa06617563454543d73e650ad6a",
+    "models/residual_catboost.cbm": "bf0235e85569256f1381bc7129ec2e5ab02108c263a2910c905e74b778fb4c52",
+    "source/graphboost_training.py": "d524d0e60e3f6fb073d07050450b22facce2027b057582f5d6e46e5e8da46b0f",
+    "source/runtime_graphboost.py": "87779d0659a11878db10acf1ed47eb504e67a2f61fb9a56e3ff7dcdd187e9afa"
+  }
+}
