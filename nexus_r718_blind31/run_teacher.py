@@ -32,7 +32,7 @@ for it in bench['items']:
  except Exception as e:r={};raw_answer='';pred=None;err=repr(e)
  rows.append({'id':it['id'],'blind_index':it['blind_index'],'domain':it['domain'],'category':it['category'],'gold':it['answer'],'pred':pred,'correct':pred==it['answer'],'raw':raw_answer,'option_logprobs':option_lp(r),'elapsed_wall_s':time.time()-t,'error':err,'ollama_metrics':{k:r.get(k) for k in ['total_duration','load_duration','prompt_eval_count','prompt_eval_duration','eval_count','eval_duration']}})
  print(MODEL,it['id'],pred,it['answer'],rows[-1]['correct'],flush=True)
-valid=[x for x in rows if x['pred'] in 'ABCD'];summary={'model':MODEL,'model_id':MODEL_ID,'blind31_sha256':bsha,'n':len(rows),'valid':len(valid),'accuracy':sum(x['correct'] for x in rows)/len(rows),'valid_accuracy':sum(x['correct'] for x in valid)/len(valid) if valid else None,'by_category':{}}
+valid=[x for x in rows if isinstance(x.get('pred'),str) and x['pred'] in 'ABCD'];summary={'model':MODEL,'model_id':MODEL_ID,'blind31_sha256':bsha,'n':len(rows),'valid':len(valid),'accuracy':sum(x['correct'] for x in rows)/len(rows),'valid_accuracy':sum(x['correct'] for x in valid)/len(valid) if valid else None,'by_category':{}}
 for d in sorted(set(x['category'] for x in rows)):
  z=[x for x in rows if x['category']==d];summary['by_category'][d]={'n':len(z),'accuracy':sum(x['correct'] for x in z)/len(z)}
 OUT.write_text(json.dumps({'summary':summary,'model_show':show,'rows':rows},ensure_ascii=False,indent=2));print(json.dumps(summary,ensure_ascii=False,indent=2))
