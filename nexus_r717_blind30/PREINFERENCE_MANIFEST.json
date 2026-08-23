@@ -1,0 +1,37 @@
+{
+  "name": "NEXUS Blind-30 Confirmatory Recurrent Reasoning Benchmark",
+  "created_after_r717_freeze": true,
+  "r717_freeze_zip_sha256": "2b86e4beb2a23b691914c638185db4bad8f66cb966baa5fcb0a77ba7dfcad5c0",
+  "r717_freeze_git_commit": "0866c5e9a05314f616a37bfe9c04f6fc476bd1d5",
+  "blind30_sha256": "afeca41d3313bde64673c99fbf059554a524ab946d21f85269ef4f0d7b5e1f6e",
+  "n": 200,
+  "answer_prior": {"A": 50, "B": 50, "C": 50, "D": 50},
+  "categories": {
+    "long_chain": 25,
+    "revision_after_evidence": 25,
+    "deceptive_consensus": 25,
+    "causal_confounding": 25,
+    "code_state": 25,
+    "multilingual_logic": 25,
+    "pattern_transfer_numeric": 25,
+    "query_value_stop": 25
+  },
+  "teacher_protocol": {
+    "models": ["ministral-3:3b", "phi4-mini:3.8b", "granite3.3:2b", "qwen3:1.7b", "gemma3:1b"],
+    "temperature": 0,
+    "seed": 301717,
+    "logprobs": true,
+    "top_logprobs": 20,
+    "num_predict": 8,
+    "prompt_rule": "Only original question/options are shown to teacher; gold and internal NEXUS state are never shown."
+  },
+  "primary_comparisons": {
+    "R7.16": "exact frozen runtime_r716 policy",
+    "R7.17_advisory": "exact frozen runtime_r717; final answer remains R7.16 sovereign by manifest",
+    "R7.17_active": "preregistered evaluator changes only the next additional-teacher choice at an R7.16 query point: use frozen R7.17 one-step recurrent suggestion if unused; otherwise fall back to frozen R7.16 BIP39 choice. Formal verifier, initial top2, fusion model, hypothesis-switch threshold, stop thresholds, max cycles and all model weights remain frozen."
+  },
+  "secondary_comparison": "R7.17 two-step quantum-tree teacher suggestion under the same substitution rule; exploratory but preregistered before teacher inference.",
+  "retuning_after_teacher_results": false,
+  "blind30_edit_after_teacher_results": false,
+  "statistical_note": "Task-level accuracy plus category/template-cluster summaries are reported; repeated logical families are not treated as 200 fully independent scientific experiments."
+}
