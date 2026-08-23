@@ -1,0 +1,16 @@
+{
+  "name": "NEXUS R7.18 Blind-31 pre-inference manifest",
+  "created_after_r718_freeze": true,
+  "r718_freeze_git_commit": "68023d51825eeefe5432263c863468e44636d862",
+  "r718_freeze_zip_sha256": "12a5c190d2f6d3a88a938b2b064ff0e7341df6ec9c169a7462c9ab4ee904021d",
+  "blind31_sha256": "49c587e0cf9f310df7720a7623169f3f24c6eae380f4778509af7b3bf7920dbb",
+  "evaluator_sha256": "67f57775520afd0af4bf82a7dc39e77c9a068d914b3f26af1b40df194962b10c",
+  "teacher_runner_sha256": "4ce497f6c4227ff1dfd50ae7243f206cda7849d12a9a8e521b18018fb3f95b7b",
+  "n": 200,
+  "categories": 8,
+  "items_per_category": 25,
+  "answer_balance": {"A": 50, "B": 50, "C": 50, "D": 50},
+  "teacher_models": ["ministral-3:3b", "phi4-mini:3.8b", "granite3.3:2b", "qwen3:1.7b", "gemma3:1b"],
+  "comparison": ["R7.16 frozen", "R7.17 frozen", "R7.18 frozen"],
+  "no_retuning_after_inference": true
+}
